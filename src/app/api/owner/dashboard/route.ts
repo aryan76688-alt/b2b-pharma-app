@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
 
     const settingsRes = await query(`SELECT value FROM app_settings WHERE key = 'near_expiry_threshold'`);
-    const thresholdDays = settingsRes.rows.length > 0 ? parseInt(settingsRes.rows[0].value.replace(/['"]/g, '')) || 90 : 90;
+    const thresholdDays = settingsRes.rows.length > 0 ? parseInt(String(settingsRes.rows[0].value || '90').replace(/['"]/g, '')) || 90 : 90;
     // 4. Near Expiry Products (Replaces Top Products)
     const nearExpiryListRes = await query(`
       SELECT 
