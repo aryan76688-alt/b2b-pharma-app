@@ -1,0 +1,46 @@
+{
+  "name": "shreeji-healthcare-b2b",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shreeji Healthcare Wholesale Pharma Distributor Order Book",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^2.25.0",
+    "@tanstack/react-query": "^5.66.0",
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "lucide-react": "^0.475.0",
+    "next": "^15.2.1",
+    "pg": "^8.13.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.1",
+    "recharts": "^2.15.1",
+    "tailwind-merge": "^3.0.2",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.13.5",
+    "@types/pg": "^8.11.11",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
+  }
+}
