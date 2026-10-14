@@ -7,6 +7,15 @@ export async function POST(req: NextRequest) {
   try {
     const owner = await requireOwner(req);
     const body = await req.json();
+
+    // Healthcheck / Connection test for MARG Bridge Chrome Extension
+    if (body?.ping) {
+      return NextResponse.json({
+        success: true,
+        message: `Connected to Next.js B2B App (Authorized as ${owner.fullName || 'Owner'}).`
+      });
+    }
+
     const { fileName, products, batches, totalRows } = body;
 
     if (!products || !batches) {

@@ -57,7 +57,39 @@ export function verifyToken(token: string): TokenPayload | null {
 export async function getAuthUser(req?: NextRequest): Promise<User | null> {
   let token: string | undefined;
 
-  // 1. Try Authorization header
+  // 1. Try static Bridge / Sync secret key for Chrome Extension & automated integrations
+  const syncSecret = process.env.MARG_SYNC_SECRET || process.env.BRIDGE_SECRET_KEY;
+  if (req && syncSecret) {
+    const apiKey = req.headers.get('x-api-key');
+    const authHeader = req.headers.get('authorization');
+    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    if (apiKey === syncSecret || bearer === syncSecret) {
+      try {
+        const ownerRes = await query(
+          `SELECT id, role, full_name as "fullName", mobile, email, username,
+                  employee_code as "employeeCode", profile_photo_url as "profilePhotoUrl",
+                  status, first_login as "firstLogin", mpin_created as "mpinCreated",
+                  last_login_at as "lastLoginAt", created_at as "createdAt", updated_at as "updatedAt"
+           FROM users WHERE role = 'owner' AND status = 'active' ORDER BY id ASC LIMIT 1`
+        );
+        if (ownerRes.rows.length > 0) {
+          return ownerRes.rows[0] as User;
+        }
+      } catch (e) {
+        // Fallback for bridge when DB connection is pending or for healthcheck
+      }
+      return {
+        id: '1',
+        role: 'owner',
+        fullName: 'MARG ERP Bridge (Owner)',
+        email: 'owner@shreejiapp.com',
+        username: 'owner',
+        status: 'active'
+      } as User;
+    }
+  }
+
+  // 2. Try Authorization header (Bearer JWT)
   if (req) {
     const authHeader = req.headers.get('authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -65,7 +97,7 @@ export async function getAuthUser(req?: NextRequest): Promise<User | null> {
     }
   }
 
-  // 2. Try HTTP-only cookie
+  // 3. Try HTTP-only cookie
   if (!token) {
     try {
       const cookieStore = await cookies();
