@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, handleAuthError } from '@/lib/permissions';
 import { query } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
+import { cache } from '@/lib/cache';
+import { syncPartyToEnvelopeManager } from '@/lib/sync';
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,6 +14,34 @@ export async function GET(req: NextRequest) {
     const city = searchParams.get('city');
     const type = searchParams.get('type');
     const salesmanId = searchParams.get('salesmanId');
+
+    const cacheKey = `parties:list:${user.role}:${user.id}:${search || ''}:${city || ''}:${type || ''}:${salesmanId || ''}`;
+    const etag = cache.getPartyEtag(cacheKey);
+
+    const ifNoneMatch = req.headers.get('if-none-match');
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'private, max-age=15, stale-while-revalidate=45',
+        },
+      });
+    }
+
+    const cachedData = cache.get<any[]>(cacheKey);
+    if (cachedData !== null) {
+      return NextResponse.json(
+        { success: true, data: cachedData },
+        {
+          headers: {
+            ETag: etag,
+            'Cache-Control': 'private, max-age=15, stale-while-revalidate=45',
+            'X-Cache': 'HIT',
+          },
+        }
+      );
+    }
 
     const conditions: string[] = ["p.status = 'active'"];
     const params: any[] = [];
@@ -85,10 +115,21 @@ export async function GET(req: NextRequest) {
 
     const res = await query(listQuery, params);
 
-    return NextResponse.json({
-      success: true,
-      data: res.rows,
-    });
+    cache.set(cacheKey, res.rows, 30);
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: res.rows,
+      },
+      {
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'private, max-age=15, stale-while-revalidate=45',
+          'X-Cache': 'MISS',
+        },
+      }
+    );
   } catch (error) {
     return handleAuthError(error);
   }
@@ -192,6 +233,24 @@ export async function POST(req: NextRequest) {
       entityId: newParty.id,
       newData: newParty,
     });
+
+    // Invalidate B2B party cache
+    cache.invalidatePartyCache();
+
+    // Outbound sync to MARG Envelope Manager (non-blocking)
+    if (req.headers.get('x-sync-source') !== 'envelope') {
+      syncPartyToEnvelopeManager({
+        partyCode: newParty.partyCode,
+        partyName: newParty.partyName,
+        mobile: newParty.mobile,
+        email: email ? email.trim() : null,
+        gstNumber: gstNumber ? gstNumber.trim().toUpperCase() : null,
+        address: address.trim(),
+        city: city.trim(),
+        state: state || 'Gujarat',
+        action: 'create',
+      }).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,

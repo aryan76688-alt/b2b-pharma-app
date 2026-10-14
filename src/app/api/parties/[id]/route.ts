@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireOwner, handleAuthError } from '@/lib/permissions';
 import { query } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
+import { cache } from '@/lib/cache';
+import { syncPartyToEnvelopeManager } from '@/lib/sync';
 
 export async function GET(
   req: NextRequest,
@@ -148,6 +150,25 @@ export async function PATCH(
       entityId: id,
       newData: body,
     });
+
+    // Invalidate B2B party cache
+    cache.invalidatePartyCache();
+
+    // Outbound sync to MARG Envelope Manager (non-blocking)
+    if (req.headers.get('x-sync-source') !== 'envelope') {
+      const updatedPartyRes = await query(
+        `SELECT party_code as "partyCode", party_name as "partyName", mobile, email,
+                gst_number as "gstNumber", address, city, state, delivery_route as "deliveryRoute"
+         FROM parties WHERE id = $1 LIMIT 1`,
+        [id]
+      );
+      if (updatedPartyRes.rows.length > 0) {
+        syncPartyToEnvelopeManager({
+          ...updatedPartyRes.rows[0],
+          action: 'update',
+        }).catch(() => {});
+      }
+    }
 
     return NextResponse.json({
       success: true,
