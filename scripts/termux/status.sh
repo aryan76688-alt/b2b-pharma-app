@@ -47,24 +47,27 @@ else
     echo -e "    Status:   ${RED}🔴 OFFLINE / STOPPED${NC}"
 fi
 
-# 4. Public Web Tunnels Status
-echo -e "\n${BOLD}[4] Public Web Tunnels (Cloudflare Free):${NC}"
-ENVELOPE_PUBLIC_URL=$(grep -o 'https://[-a-zA-Z0-9.]*\.trycloudflare\.com' "${BASE_DIR}/logs/tunnel_envelope.log" 2>/dev/null | tail -n 1)
-ORDERBOOK_PUBLIC_URL=$(grep -o 'https://[-a-zA-Z0-9.]*\.trycloudflare\.com' "${BASE_DIR}/logs/tunnel_orderbook.log" 2>/dev/null | tail -n 1)
-
+# 4. Permanent Cloudflare Custom Subdomain Status
+echo -e "\n${BOLD}[4] Permanent Public Web Subdomains (Cloudflare Tunnel):${NC}"
 if pgrep -f "cloudflared tunnel" >/dev/null 2>&1; then
-    echo -e "    Status:   ${GREEN}🟢 ONLINE (Accessible worldwide)${NC}"
-    if [ -n "${ENVELOPE_PUBLIC_URL}" ]; then
-        echo -e "    • Envelope Manager URL: ${GREEN}${BOLD}${ENVELOPE_PUBLIC_URL}${NC}"
-    fi
-    if [ -n "${ORDERBOOK_PUBLIC_URL}" ]; then
-        echo -e "    • Order Book URL:       ${GREEN}${BOLD}${ORDERBOOK_PUBLIC_URL}${NC}"
-    fi
+    echo -e "    Status:   ${GREEN}🟢 ONLINE (Global 24/7 Access)${NC}"
+    echo -e "    • Envelope Manager: ${GREEN}${BOLD}https://envelope.shreeji7.com${NC}"
+    echo -e "    • Order Book:       ${GREEN}${BOLD}https://order.shreeji7.com${NC}"
 else
-    echo -e "    Status:   ${RED}🔴 OFFLINE (Tunnels not running)${NC}"
+    echo -e "    Status:   ${RED}🔴 OFFLINE (Tunnel stopped)${NC}"
 fi
 
-# 5. Local Wi-Fi IP
+# 5. 24/7 Watchdog & Live Code Auto-Updater Status
+echo -e "\n${BOLD}[5] 24/7 Auto-Healer & Auto-Updater Watchdog:${NC}"
+if pgrep -f "watchdog.sh" >/dev/null 2>&1; then
+    PID=$(cat "${BASE_DIR}/pids/watchdog.pid" 2>/dev/null || pgrep -f "watchdog.sh" | head -n 1)
+    echo -e "    Status:   ${GREEN}🟢 ACTIVE (Continuous Auto-Restart & Auto-Update)${NC} (PID: ${PID})"
+    echo -e "    Log:      ${CYAN}tail -f ~/shreeji/logs/watchdog.log${NC}"
+else
+    echo -e "    Status:   ${YELLOW}🟡 INACTIVE (Run 'start' to activate)${NC}"
+fi
+
+# 6. Local Wi-Fi IP
 WIFI_IP=$(ip -4 addr show wlan0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
 if [ -z "${WIFI_IP}" ]; then
     WIFI_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
