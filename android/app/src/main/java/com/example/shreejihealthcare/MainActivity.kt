@@ -65,8 +65,8 @@ fun ShreejiAppRoot() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("shreeji_prefs", Context.MODE_PRIVATE) }
     
-    // Default server URL: Permanent Cloudflare Subdomain (HTTPS)
-    val savedUrl = prefs.getString("server_url", "https://order.shreeji7.com") ?: "https://order.shreeji7.com"
+    // Default server URL: Permanent Free Cloudflare Worker Domain (HTTPS)
+    val savedUrl = prefs.getString("server_url", "https://shreeji-order.aryan76688.workers.dev") ?: "https://shreeji-order.aryan76688.workers.dev"
     var currentUrl by remember { mutableStateOf(savedUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
