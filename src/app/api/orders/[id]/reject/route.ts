@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireOwner, handleAuthError } from '@/lib/permissions';
 import { query, withTransaction } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
+import { triggerN8nWebhook } from '@/lib/n8n';
 
 export async function POST(
   req: NextRequest,
@@ -30,7 +31,38 @@ export async function POST(
 
     const order = orderRes.rows[0];
 
+    if (order.status === 'rejected') {
+      return NextResponse.json(
+        { success: false, error: { code: 'ALREADY_REJECTED', message: 'Order is already marked as rejected.' } },
+        { status: 400 }
+      );
+    }
+
     await withTransaction(async (client) => {
+      // 1. Restore stock to products and batches
+      const itemsRes = await client.query(
+        `SELECT product_id, batch_id, quantity, free_quantity FROM order_items WHERE order_id = $1`,
+        [id]
+      );
+
+      for (const it of itemsRes.rows) {
+        const units = (Number(it.quantity) || 0) + (Number(it.free_quantity) || 0);
+        if (units > 0) {
+          await client.query(
+            `UPDATE products SET stock_qty = stock_qty + $1, updated_at = now() WHERE id = $2`,
+            [units, it.product_id]
+          );
+
+          if (it.batch_id) {
+            await client.query(
+              `UPDATE product_batches SET stock_qty = stock_qty + $1, updated_at = now() WHERE id = $2`,
+              [units, it.batch_id]
+            );
+          }
+        }
+      }
+
+      // 2. Update order status
       await client.query(
         `UPDATE orders
          SET status = 'rejected', rejection_reason = $1, updated_at = now()
@@ -64,9 +96,16 @@ export async function POST(
       newData: { rejectionReason },
     });
 
+    triggerN8nWebhook('ORDER_REJECTED', {
+      orderId: id,
+      orderNumber: order.order_number,
+      rejectionReason: rejectionReason.trim(),
+      rejectedBy: owner.fullName,
+    }).catch(() => {});
+
     return NextResponse.json({
       success: true,
-      message: 'Order rejected.',
+      message: 'Order rejected. Stock has been restored successfully.',
     });
   } catch (error) {
     return handleAuthError(error);

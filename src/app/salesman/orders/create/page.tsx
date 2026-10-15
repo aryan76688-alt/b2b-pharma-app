@@ -9,6 +9,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { SearchBar } from '@/components/shared/SearchBar';
 import { QuantityStepper } from '@/components/orders/QuantityStepper';
 import { FreeQuantityStepper } from '@/components/orders/FreeQuantityStepper';
+import { LocationPermissionModal } from '@/components/shared/LocationPermissionModal';
 import { formatCurrency, calculateOrderTotals } from '@/lib/utils';
 import {
   CheckCircle2,
@@ -51,6 +52,7 @@ export default function CreateOrderPage() {
   // Batch Selection Modal
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const fetchParties = async () => {
     setIsLoadingParties(true);
@@ -119,6 +121,7 @@ export default function CreateOrderPage() {
   };
 
   const updateQuantity = (product: Product, batch: ProductBatch | null, qty: number) => {
+    const availableStock = batch ? Number(batch.stockQty || 0) : Number(product.stockQty || 0);
     const cartKey = batch ? `${product.id}_${batch.id}` : product.id;
     const ptr = batch ? Number(batch.ptr) : Number(product.ptr);
     const mrp = batch ? Number(batch.mrp) : Number(product.mrp);
@@ -138,15 +141,21 @@ export default function CreateOrderPage() {
       schemeName: product.defaultScheme || undefined,
     };
 
+    // Strict stock capping: total units (billed qty + free qty) CANNOT exceed available stock!
+    const maxBilledAllowed = Math.max(0, availableStock - existing.freeQuantity);
+    const cappedQty = Math.min(maxBilledAllowed, Math.max(0, qty));
+
     let freeQty = existing.freeQuantity;
 
-    if (product.defaultScheme === '10+2' && qty >= 10 && existing.quantity < 10) {
-      freeQty = Math.floor(qty / 10) * 2;
-    } else if (product.defaultScheme === '5+1' && qty >= 5 && existing.quantity < 5) {
-      freeQty = Math.floor(qty / 5) * 1;
+    if (product.defaultScheme === '10+2' && cappedQty >= 10 && existing.quantity < 10) {
+      const schemeFree = Math.floor(cappedQty / 10) * 2;
+      freeQty = Math.min(Math.max(0, availableStock - cappedQty), schemeFree);
+    } else if (product.defaultScheme === '5+1' && cappedQty >= 5 && existing.quantity < 5) {
+      const schemeFree = Math.floor(cappedQty / 5) * 1;
+      freeQty = Math.min(Math.max(0, availableStock - cappedQty), schemeFree);
     }
 
-    if (qty <= 0 && freeQty <= 0) {
+    if (cappedQty <= 0 && freeQty <= 0) {
       const nextCart = { ...cart };
       delete nextCart[cartKey];
       setCart(nextCart);
@@ -155,15 +164,16 @@ export default function CreateOrderPage() {
         ...cart,
         [cartKey]: {
           ...existing,
-          quantity: qty,
+          quantity: cappedQty,
           freeQuantity: freeQty,
-          lineTotal: qty * ptr,
+          lineTotal: cappedQty * ptr,
         },
       });
     }
   };
 
   const updateFreeQuantity = (product: Product, batch: ProductBatch | null, freeQty: number) => {
+    const availableStock = batch ? Number(batch.stockQty || 0) : Number(product.stockQty || 0);
     const cartKey = batch ? `${product.id}_${batch.id}` : product.id;
     const ptr = batch ? Number(batch.ptr) : Number(product.ptr);
     const mrp = batch ? Number(batch.mrp) : Number(product.mrp);
@@ -183,7 +193,10 @@ export default function CreateOrderPage() {
       schemeName: product.defaultScheme || undefined,
     };
 
-    if (existing.quantity <= 0 && freeQty <= 0) {
+    const maxFreeAllowed = Math.max(0, availableStock - existing.quantity);
+    const cappedFree = Math.min(maxFreeAllowed, Math.max(0, freeQty));
+
+    if (existing.quantity <= 0 && cappedFree <= 0) {
       const nextCart = { ...cart };
       delete nextCart[cartKey];
       setCart(nextCart);
@@ -192,7 +205,7 @@ export default function CreateOrderPage() {
         ...cart,
         [cartKey]: {
           ...existing,
-          freeQuantity: Math.max(0, freeQty),
+          freeQuantity: cappedFree,
           lineTotal: existing.quantity * ptr,
         },
       });
@@ -209,6 +222,12 @@ export default function CreateOrderPage() {
     }
     if (cartItemsList.length === 0) {
       setErrorMsg('Please add at least one medicine to the order.');
+      return;
+    }
+
+    const hasLocationPerm = typeof window !== 'undefined' && localStorage.getItem('shreeji_location_permission_granted') === 'true';
+    if (!hasLocationPerm) {
+      setShowLocationModal(true);
       return;
     }
 
@@ -364,8 +383,13 @@ export default function CreateOrderPage() {
                                 Select Batch
                               </Button>
                             ) : (
-                              <div className="flex flex-col items-center gap-2">
-                                <QuantityStepper value={cart[p.id]?.quantity || 0} onChange={(v) => updateQuantity(p, null, v)} />
+                              <div className="flex flex-col items-center gap-1">
+                                <QuantityStepper
+                                  value={cart[p.id]?.quantity || 0}
+                                  max={Math.max(0, p.stockQty - (cart[p.id]?.freeQuantity || 0))}
+                                  onChange={(v) => updateQuantity(p, null, v)}
+                                />
+                                {p.stockQty <= 0 && <span className="text-[10px] text-red-500 font-bold">Out of stock</span>}
                               </div>
                             )}
                           </div>
@@ -373,24 +397,36 @@ export default function CreateOrderPage() {
 
                         {selectedCartItems.length > 0 && hasBatches && (
                           <div className="mt-3 space-y-2 border-t pt-2 border-slate-100">
-                            {selectedCartItems.map(([key, item]) => (
-                              <div key={key} className="flex items-center justify-between bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
-                                <div>
-                                  <p className="text-[11px] font-bold text-slate-800">Batch: {item.batchNo}</p>
-                                  <p className="text-[10px] text-slate-500">PTR: {formatCurrency(item.ptr)}</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <div className="flex flex-col items-center">
-                                    <span className="text-[9px] font-bold text-slate-400">QTY</span>
-                                    <QuantityStepper value={item.quantity} onChange={(v) => updateQuantity(p, p.batches!.find(b => b.id === item.batchId)!, v)} />
+                            {selectedCartItems.map(([key, item]) => {
+                              const batchObj = p.batches!.find(b => b.id === item.batchId);
+                              const batchStock = batchObj?.stockQty || 0;
+                              return (
+                                <div key={key} className="flex items-center justify-between bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
+                                  <div>
+                                    <p className="text-[11px] font-bold text-slate-800">Batch: {item.batchNo}</p>
+                                    <p className="text-[10px] text-slate-500">PTR: {formatCurrency(item.ptr)} • Stock: {batchStock}</p>
                                   </div>
-                                  <div className="flex flex-col items-center">
-                                    <span className="text-[9px] font-bold text-emerald-600">FREE</span>
-                                    <FreeQuantityStepper value={item.freeQuantity} onChange={(v) => updateFreeQuantity(p, p.batches!.find(b => b.id === item.batchId)!, v)} />
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex flex-col items-center">
+                                      <span className="text-[9px] font-bold text-slate-400">QTY</span>
+                                      <QuantityStepper
+                                        value={item.quantity}
+                                        max={Math.max(0, batchStock - (item.freeQuantity || 0))}
+                                        onChange={(v) => updateQuantity(p, batchObj!, v)}
+                                      />
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                      <span className="text-[9px] font-bold text-emerald-600">FREE</span>
+                                      <FreeQuantityStepper
+                                        value={item.freeQuantity}
+                                        max={Math.max(0, batchStock - (item.quantity || 0))}
+                                        onChange={(v) => updateFreeQuantity(p, batchObj!, v)}
+                                      />
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -458,12 +494,20 @@ export default function CreateOrderPage() {
                       ) : (
                         <>
                           <div className="flex flex-col items-center">
-                            <span className="text-[10px] font-bold text-slate-500 mb-1">QTY</span>
-                            <QuantityStepper value={item?.quantity || 0} onChange={(v) => updateQuantity(activeProduct, b, v)} />
+                            <span className="text-[10px] font-bold text-slate-500 mb-1">QTY (Max {Math.max(0, b.stockQty - (item?.freeQuantity || 0))})</span>
+                            <QuantityStepper
+                              value={item?.quantity || 0}
+                              max={Math.max(0, b.stockQty - (item?.freeQuantity || 0))}
+                              onChange={(v) => updateQuantity(activeProduct, b, v)}
+                            />
                           </div>
                           <div className="flex flex-col items-center">
-                            <span className="text-[10px] font-bold text-emerald-600 mb-1">FREE</span>
-                            <FreeQuantityStepper value={item?.freeQuantity || 0} onChange={(v) => updateFreeQuantity(activeProduct, b, v)} />
+                            <span className="text-[10px] font-bold text-emerald-600 mb-1">FREE (Max {Math.max(0, b.stockQty - (item?.quantity || 0))})</span>
+                            <FreeQuantityStepper
+                              value={item?.freeQuantity || 0}
+                              max={Math.max(0, b.stockQty - (item?.quantity || 0))}
+                              onChange={(v) => updateFreeQuantity(activeProduct, b, v)}
+                            />
                           </div>
                         </>
                       )}
@@ -474,6 +518,46 @@ export default function CreateOrderPage() {
           })}
         </div>
       </Dialog>
+
+      {/* Location Permission Modal for Order Geotagging */}
+      <LocationPermissionModal
+        isOpen={showLocationModal}
+        onAllow={() => {
+          setShowLocationModal(false);
+          handleSubmitOrder('pending');
+        }}
+        onDeny={() => {
+          setShowLocationModal(false);
+          // Allow submitting without GPS if user denies
+          setIsSubmitting(true);
+          fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              partyId: selectedParty!.id,
+              status: 'pending',
+              remarks: remarks.trim() || undefined,
+              items: cartItemsList,
+              locationLat: null,
+              locationLng: null,
+            }),
+          })
+            .then(res => res.json())
+            .then(json => {
+              if (json.success && json.data) {
+                router.push(`/salesman/orders/${json.data.id}`);
+              } else {
+                setErrorMsg(json.error?.message || 'Failed to submit order.');
+                setIsSubmitting(false);
+              }
+            })
+            .catch(err => {
+              setErrorMsg(err.message || 'Error booking order.');
+              setIsSubmitting(false);
+            });
+        }}
+        appName="Shreeji Healthcare Order Book"
+      />
     </AppShell>
   );
 }

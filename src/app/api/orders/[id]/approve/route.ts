@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireOwner, handleAuthError } from '@/lib/permissions';
 import { query, withTransaction } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
+import { triggerN8nWebhook } from '@/lib/n8n';
 
 export async function POST(
   req: NextRequest,
@@ -60,6 +61,12 @@ export async function POST(
       entityType: 'ORDER',
       entityId: id,
     });
+
+    triggerN8nWebhook('ORDER_APPROVED', {
+      orderId: id,
+      orderNumber: order.order_number,
+      approvedBy: owner.fullName,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

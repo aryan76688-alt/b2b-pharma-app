@@ -74,7 +74,41 @@ export default function OrderDetailsPage({
       const res = await fetch(`/api/orders/${id}/approve`, { method: 'POST' });
       const json = await res.json();
       if (json.success) {
-        fetchOrder();
+        // Auto create Marg ERP GST Invoice PDF
+        if (order) {
+          try {
+            await generateInvoicePDF(
+              {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                orderDate: order.orderDate,
+                salesmanName: order.salesmanName,
+                items: (order.items || []).map((it: any) => ({
+                  productName: it.productName,
+                  packing: it.packing,
+                  mfg: it.company,
+                  mrp: Number(it.mrp),
+                  batchNo: it.batchNo,
+                  quantity: Number(it.quantity),
+                  freeQuantity: Number(it.freeQuantity),
+                  ptr: Number(it.ptr),
+                  lineTotal: Number(it.lineTotal),
+                })),
+                totalAmount: Number(order.totalAmount),
+              },
+              {
+                partyName: order.partyName || 'Chemist Party',
+                address: order.partyAddress,
+                city: order.partyCity,
+                mobile: order.partyMobile,
+                gstNumber: order.partyGst,
+              }
+            );
+          } catch (pdfErr) {
+            console.error('Auto invoice PDF error:', pdfErr);
+          }
+        }
+        await fetchOrder();
       } else {
         alert(json.error?.message || 'Approval failed');
       }
@@ -153,6 +187,44 @@ export default function OrderDetailsPage({
       showBack
       actions={
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs text-blue-700 border-blue-300 hover:bg-blue-50"
+            onClick={async () => {
+              if (order) {
+                await generateInvoicePDF(
+                  {
+                    id: order.id,
+                    orderNumber: order.orderNumber,
+                    orderDate: order.orderDate,
+                    salesmanName: order.salesmanName,
+                    items: (order.items || []).map((it: any) => ({
+                      productName: it.productName,
+                      packing: it.packing,
+                      mfg: it.company,
+                      mrp: Number(it.mrp),
+                      batchNo: it.batchNo,
+                      quantity: Number(it.quantity),
+                      freeQuantity: Number(it.freeQuantity),
+                      ptr: Number(it.ptr),
+                      lineTotal: Number(it.lineTotal),
+                    })),
+                    totalAmount: Number(order.totalAmount),
+                  },
+                  {
+                    partyName: order.partyName || 'Chemist Party',
+                    address: order.partyAddress,
+                    city: order.partyCity,
+                    mobile: order.partyMobile,
+                    gstNumber: order.partyGst,
+                  }
+                );
+              }
+            }}
+          >
+            <FileDown className="w-3.5 h-3.5 mr-1 text-blue-600" /> Invoice PDF
+          </Button>
           {order.status === 'pending' && (
             <>
               <Button

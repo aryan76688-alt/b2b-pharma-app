@@ -3,6 +3,7 @@ import { requireAuth, handleAuthError } from '@/lib/permissions';
 import { query, withTransaction } from '@/lib/db';
 import { calculateOrderTotals } from '@/lib/utils';
 import { logAudit } from '@/lib/audit';
+import { triggerN8nWebhook } from '@/lib/n8n';
 
 export async function GET(req: NextRequest) {
   try {
@@ -166,10 +167,54 @@ export async function POST(req: NextRequest) {
       );
       const order = orderRes.rows[0];
 
-      // 2. Insert order items
+      // 2. Validate stock and insert order items with atomic stock decrement
       for (const item of items) {
         const qty = Math.max(0, Number(item.quantity) || 0);
         const freeQty = Math.max(0, Number(item.freeQuantity) || 0);
+        const totalUnits = qty + freeQty;
+
+        if (totalUnits <= 0) continue;
+
+        // Check and decrement batch stock if batch specified
+        if (item.batchId) {
+          const batchRes = await client.query(
+            `SELECT id, batch_no, stock_qty FROM product_batches WHERE id = $1 FOR UPDATE`,
+            [item.batchId]
+          );
+          if (batchRes.rows.length === 0) {
+            throw new Error(`Batch not found for product.`);
+          }
+          const batchStock = Number(batchRes.rows[0].stock_qty);
+          if (batchStock < totalUnits) {
+            throw new Error(
+              `Insufficient stock for batch ${batchRes.rows[0].batch_no}. Available stock: ${batchStock}, requested: ${totalUnits}.`
+            );
+          }
+          await client.query(
+            `UPDATE product_batches SET stock_qty = stock_qty - $1, updated_at = now() WHERE id = $2`,
+            [totalUnits, item.batchId]
+          );
+        }
+
+        // Check and decrement master product stock
+        const prodRes = await client.query(
+          `SELECT id, product_name, stock_qty FROM products WHERE id = $1 FOR UPDATE`,
+          [item.productId]
+        );
+        if (prodRes.rows.length === 0) {
+          throw new Error(`Product not found.`);
+        }
+        const prodStock = Number(prodRes.rows[0].stock_qty);
+        if (prodStock < totalUnits) {
+          throw new Error(
+            `Insufficient stock for ${prodRes.rows[0].product_name}. Available stock: ${prodStock}, requested: ${totalUnits}.`
+          );
+        }
+        await client.query(
+          `UPDATE products SET stock_qty = stock_qty - $1, updated_at = now() WHERE id = $2`,
+          [totalUnits, item.productId]
+        );
+
         const ptr = Math.max(0, Number(item.ptr) || 0);
         const mrp = Math.max(0, Number(item.mrp) || 0);
         const disc = Math.max(0, Number(item.discountAmount) || 0);
@@ -227,6 +272,19 @@ export async function POST(req: NextRequest) {
       entityId: newOrder.id,
       newData: { orderNumber: newOrder.orderNumber, totalAmount: totals.totalAmount, totalQuantity: totals.totalQuantity, totalFreeQuantity: totals.totalFreeQuantity },
     });
+
+    // Trigger n8n automated dispatch webhook non-blocking
+    triggerN8nWebhook('ORDER_CREATED', {
+      orderId: newOrder.id,
+      orderNumber: newOrder.orderNumber,
+      partyId,
+      partyName: partyRes.rows[0].party_name,
+      salesmanId,
+      salesmanName: user.fullName,
+      totalAmount: totals.totalAmount,
+      totalQuantity: totals.totalQuantity,
+      status,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,
