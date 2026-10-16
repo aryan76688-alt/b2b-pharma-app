@@ -26,6 +26,7 @@ import {
   Gift,
   FileText,
   AlertCircle,
+  Mail,
 } from 'lucide-react';
 
 export default function OrderDetailsPage({
@@ -39,6 +40,7 @@ export default function OrderDetailsPage({
   const [order, setOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isEmailing, setIsEmailing] = useState(false);
 
   // Status Change Dialog
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
@@ -181,6 +183,28 @@ export default function OrderDetailsPage({
     );
   }
 
+  const handleEmailInvoice = async () => {
+    if (!order) return;
+    setIsEmailing(true);
+    try {
+      const res = await fetch('/api/owner/gmail/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, to_email: order.partyEmail })
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert(`Invoice emailed successfully to ${json.recipient}!`);
+      } else {
+        alert(`Failed to send email: ${json.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Error sending email: ${err.message}`);
+    } finally {
+      setIsEmailing(false);
+    }
+  };
+
   return (
     <AppShell
       title={`Order ${order.orderNumber}`}
@@ -224,6 +248,17 @@ export default function OrderDetailsPage({
             }}
           >
             <FileDown className="w-3.5 h-3.5 mr-1 text-blue-600" /> Invoice PDF
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs text-indigo-700 border-indigo-300 hover:bg-indigo-50"
+            isLoading={isEmailing}
+            onClick={handleEmailInvoice}
+            title="1-Click Email Invoice to Chemist / Management via Gmail"
+          >
+            <Mail className="w-3.5 h-3.5 mr-1 text-indigo-600" /> Email Invoice
           </Button>
           {order.status === 'pending' && (
             <>
