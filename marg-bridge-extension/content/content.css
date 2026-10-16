@@ -1,0 +1,220 @@
+/* MARG Books Bridge - Scoped Content Script Styles */
+
+#mb-bridge-widget-root {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+}
+
+.mb-bridge-fab-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  filter: drop-shadow(0 4px 14px rgba(15, 118, 110, 0.35));
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mb-bridge-fab-container:hover {
+  transform: translateY(-2px);
+}
+
+.mb-bridge-sync-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 10px 18px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.mb-bridge-sync-btn:hover {
+  background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+}
+
+.mb-bridge-sync-btn:active {
+  transform: scale(0.98);
+}
+
+.mb-bridge-sync-btn:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.mb-bridge-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mb-bridge-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #38bdf8;
+  color: #0c4a6e;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  margin-left: 4px;
+}
+
+.mb-bridge-menu-toggle {
+  background: #0f766e;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 10px 8px;
+  border-radius: 0 9999px 9999px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -6px;
+}
+
+/* Dropdown Menu */
+.mb-bridge-dropdown {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+  width: 220px;
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+
+.mb-bridge-dropdown.active {
+  display: flex;
+}
+
+.mb-bridge-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.mb-bridge-menu-item:hover {
+  background-color: #f8fafc;
+  color: #0f766e;
+}
+
+.mb-bridge-menu-item:last-child {
+  border-bottom: none;
+}
+
+/* Toast Notification */
+#mb-bridge-toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mb-bridge-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+  animation: mbSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.mb-bridge-toast.success {
+  border-left: 5px solid #10b981;
+}
+
+.mb-bridge-toast.error {
+  border-left: 5px solid #f43f5e;
+}
+
+.mb-bridge-toast.info {
+  border-left: 5px solid #0d9488;
+}
+
+.mb-bridge-toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.mb-bridge-toast-message {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.mb-bridge-toast-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  margin-left: auto;
+}
+
+.mb-bridge-toast-close:hover {
+  color: #334155;
+}
+
+@keyframes mbSlideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.mb-bridge-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: mbSpin 0.8s linear infinite;
+}
+
+@keyframes mbSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

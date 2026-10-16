@@ -39,6 +39,9 @@ export async function ensureDatabaseIndexes(): Promise<void> {
   if (indexesEnsured) return;
   try {
     const sql = `
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      CREATE INDEX IF NOT EXISTS idx_parties_lat_lng ON parties(latitude, longitude);
       CREATE INDEX IF NOT EXISTS idx_parties_party_code ON parties(party_code);
       CREATE INDEX IF NOT EXISTS idx_parties_party_name ON parties(party_name);
       CREATE INDEX IF NOT EXISTS idx_parties_mobile ON parties(mobile);

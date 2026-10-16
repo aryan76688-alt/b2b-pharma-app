@@ -57,8 +57,10 @@ export interface Party {
   lastPaymentDate?: string;
   pendingDays?: number;
   totalOutstanding?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export type ProductCategory = 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Other';

@@ -1,0 +1,9 @@
+{
+  "appUrl": "http://100.69.194.11:3000",
+  "secretKey": "shreeji-marg-sync-secret-2026",
+  "margExportFolder": "./exports",
+  "archiveFolder": "./exports/archive",
+  "autoArchive": true,
+  "syncIntervalSeconds": 60,
+  "supportedExtensions": [".xlsx", ".xls", ".csv"]
+}

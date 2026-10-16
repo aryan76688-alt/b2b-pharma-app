@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Party } from '@/types';
+import { cachePartiesLocally, getCachedPartiesLocally, initOfflineSyncListener } from '@/lib/offline-queue';
 
 export default function SalesmanPartiesPage() {
   const [parties, setParties] = useState<Party[]>([]);
@@ -33,10 +34,19 @@ export default function SalesmanPartiesPage() {
       const res = await fetch(`/api/parties?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.success) setParties(json.data);
+        if (json.success && Array.isArray(json.data)) {
+          setParties(json.data);
+          cachePartiesLocally(json.data).catch(() => {});
+          return;
+        }
       }
+      // Offline fallback
+      const offlineList = await getCachedPartiesLocally();
+      if (offlineList.length > 0) setParties(offlineList);
     } catch (err) {
-      console.error(err);
+      console.warn('Network issue fetching parties, using offline cache:', err);
+      const offlineList = await getCachedPartiesLocally();
+      if (offlineList.length > 0) setParties(offlineList);
     } finally {
       setIsLoading(false);
     }
@@ -44,6 +54,10 @@ export default function SalesmanPartiesPage() {
 
   useEffect(() => {
     fetchParties();
+    const cleanup = initOfflineSyncListener(() => {
+      fetchParties();
+    });
+    return cleanup;
   }, []);
 
   const handleCall = (mobile: string) => {
@@ -131,6 +145,20 @@ export default function SalesmanPartiesPage() {
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{p.mobile}</span>
                       </p>
+                      {p.latitude && p.longitude && (
+                        <p className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <a
+                            href={`https://maps.google.com/?q=${p.latitude},${p.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-emerald-900"
+                            title="Open store coordinates in Google Maps"
+                          >
+                            GPS: {Number(p.latitude).toFixed(4)}, {Number(p.longitude).toFixed(4)} ↗
+                          </a>
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs mb-3">

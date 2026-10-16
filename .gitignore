@@ -9,3 +9,5 @@ android/local.properties
 out/
 build/
 .env*
+*.tsbuildinfo
+patch_*.js
