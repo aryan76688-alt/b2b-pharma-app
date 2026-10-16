@@ -32,7 +32,7 @@ export function Sidebar() {
 
   if (!user) return null;
 
-  const isOwner = user.role === 'owner';
+  const isOwner = user.role === 'owner' || user.role === 'super_admin' || user.role === 'admin';
 
   type NavItem = { label: string; href: string; icon: any; highlight?: boolean };
 
@@ -41,6 +41,7 @@ export function Sidebar() {
     { label: 'Orders', href: '/owner/orders', icon: ShoppingCart },
     { label: 'Stock & Batches', href: '/owner/stock', icon: Package },
     { label: 'Parties', href: '/owner/parties', icon: Users },
+    { label: 'Users & Roles', href: '/owner/users', icon: ShieldCheck },
     { label: 'Salesmen', href: '/owner/salesmen', icon: UserCheck },
     { label: 'Outstanding Aging', href: '/owner/outstanding', icon: Clock },
     { label: 'Schemes', href: '/owner/schemes', icon: BadgePercent },

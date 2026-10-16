@@ -37,7 +37,7 @@ export async function requireRole(role: UserRole | UserRole[], req?: NextRequest
 }
 
 export async function requireOwner(req?: NextRequest): Promise<User> {
-  return requireRole('owner', req);
+  return requireRole(['super_admin', 'owner', 'admin'], req);
 }
 
 export async function requireSalesman(req?: NextRequest): Promise<User> {
