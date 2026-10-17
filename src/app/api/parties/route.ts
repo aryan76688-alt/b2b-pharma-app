@@ -257,6 +257,9 @@ export async function POST(req: NextRequest) {
         address: address.trim(),
         city: city.trim(),
         state: state || 'Gujarat',
+        deliveryRoute: body.deliveryRoute || area || null,
+        latitude: newParty.latitude || null,
+        longitude: newParty.longitude || null,
         action: 'create',
       }).catch(() => {});
     }

@@ -1,11 +1,15 @@
 package com.example.shreejihealthcare
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -34,12 +38,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* Location permissions handled */ }
+
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val callback = filePathCallback ?: return@registerForActivityResult
+        var results: Array<Uri>? = null
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val data = result.data
+            val clipData = data?.clipData
+            if (clipData != null) {
+                val count = clipData.itemCount
+                results = Array(count) { i -> clipData.getItemAt(i).uri }
+            } else if (data?.data != null) {
+                results = arrayOf(data.data!!)
+            }
+        }
+        callback.onReceiveValue(results)
+        filePathCallback = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,30 +79,78 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            ShreejiAppRoot()
+            ShreejiAppRoot(
+                onOpenFileChooser = { callback ->
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        putExtra(
+                            Intent.EXTRA_MIME_TYPES,
+                            arrayOf(
+                                "application/vnd.ms-excel",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/pdf",
+                                "text/csv",
+                                "*/*"
+                            )
+                        )
+                    }
+                    try {
+                        fileChooserLauncher.launch(Intent.createChooser(intent, "Select Excel / PDF File"))
+                        true
+                    } catch (e: ActivityNotFoundException) {
+                        filePathCallback = null
+                        false
+                    }
+                }
+            )
         }
     }
 }
 
+private const val CLOUDFLARE_WORKER_URL = "https://shreeji-order.aryan76688.workers.dev"
+private const val LOCAL_TERMUX_URL = "http://127.0.0.1:3000"
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun ShreejiAppRoot() {
+fun ShreejiAppRoot(
+    onOpenFileChooser: (ValueCallback<Array<Uri>>) -> Boolean = { false }
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("shreeji_prefs", Context.MODE_PRIVATE) }
     
-    // Default server URL: Permanent Free Cloudflare Worker Domain (HTTPS)
-    val savedUrl = prefs.getString("server_url", "https://shreeji-order.aryan76688.workers.dev") ?: "https://shreeji-order.aryan76688.workers.dev"
+    val savedUrl = prefs.getString("server_url", CLOUDFLARE_WORKER_URL) ?: CLOUDFLARE_WORKER_URL
     var currentUrl by remember { mutableStateOf(savedUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
+    var retrySecondsLeft by remember { mutableIntStateOf(5) }
+    var autoRetryActive by remember { mutableStateOf(true) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf(currentUrl) }
 
     // Intercept hardware/gesture back press to navigate WebView back
     BackHandler(enabled = canGoBack) {
         webViewInstance?.goBack()
+    }
+
+    // Auto-reconnect countdown timer when an error or server recycle happens
+    LaunchedEffect(hasError, autoRetryActive, currentUrl) {
+        if (hasError && autoRetryActive) {
+            retrySecondsLeft = 5
+            while (retrySecondsLeft > 0 && hasError && autoRetryActive) {
+                delay(1000L)
+                retrySecondsLeft -= 1
+            }
+            if (hasError && autoRetryActive) {
+                hasError = false
+                isLoading = true
+                webViewInstance?.loadUrl(currentUrl)
+            }
+        }
     }
 
     Box(
@@ -101,6 +174,7 @@ fun ShreejiAppRoot() {
                         domStorageEnabled = true
                         databaseEnabled = true
                         allowFileAccess = true
+                        allowContentAccess = true
                         loadWithOverviewMode = true
                         useWideViewPort = true
                         builtInZoomControls = false
@@ -132,7 +206,21 @@ fun ShreejiAppRoot() {
                             if (request?.isForMainFrame == true) {
                                 isLoading = false
                                 hasError = true
+                                autoRetryActive = true
                             }
+                        }
+
+                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                            val url = request?.url?.toString() ?: return false
+                            if (url.startsWith("tel:") || url.startsWith("mailto:") || url.startsWith("whatsapp:") || url.startsWith("https://wa.me/") || url.contains("api.whatsapp.com")) {
+                                return try {
+                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    true
+                                } catch (_: Exception) {
+                                    false
+                                }
+                            }
+                            return false
                         }
                     }
 
@@ -149,6 +237,18 @@ fun ShreejiAppRoot() {
                             callback: GeolocationPermissions.Callback?
                         ) {
                             callback?.invoke(origin, true, false)
+                        }
+
+                        override fun onShowFileChooser(
+                            view: WebView?,
+                            filePathCallback: ValueCallback<Array<Uri>>?,
+                            fileChooserParams: FileChooserParams?
+                        ): Boolean {
+                            return if (filePathCallback != null) {
+                                onOpenFileChooser(filePathCallback)
+                            } else {
+                                false
+                            }
                         }
                     }
 
@@ -196,13 +296,13 @@ fun ShreejiAppRoot() {
             }
         }
 
-        // Connection Error / Offline Screen
+        // Connection Error / Offline Screen with 24/7 Resilience & Auto-Reconnect
         if (hasError) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0xFFF8FAFC))
-                    .padding(24.dp),
+                    .padding(20.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
@@ -212,64 +312,111 @@ fun ShreejiAppRoot() {
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.shreeji_logo),
                             contentDescription = "Shreeji Healthcare",
-                            modifier = Modifier.size(130.dp)
+                            modifier = Modifier.size(110.dp)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "SHREEJI HEALTHCARE",
-                            fontSize = 18.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF0B63CE)
                         )
                         Text(
                             text = "A UNIT OF SHREEJI 7",
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE51A24)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Unable to connect to order server.",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            text = "Server Reconnecting...",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E293B)
                         )
                         Text(
-                            text = "Ensure the Next.js backend server is running and accessible.",
-                            fontSize = 11.sp,
+                            text = if (retrySecondsLeft > 0) "Auto-reconnecting in $retrySecondsLeft seconds..." else "Connecting...",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF0B63CE)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Active: $currentUrl",
+                            fontSize = 10.sp,
                             color = Color(0xFF64748B),
                             textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        
-                        Row(
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Quick Connection Switch Buttons
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = { showSettingsDialog = true },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Change URL", fontSize = 12.sp)
-                            }
                             Button(
                                 onClick = {
                                     hasError = false
                                     isLoading = true
+                                    autoRetryActive = true
                                     webViewInstance?.loadUrl(currentUrl)
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B63CE))
                             ) {
-                                Text("Retry", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("🔄 Retry Now", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        currentUrl = LOCAL_TERMUX_URL
+                                        prefs.edit().putString("server_url", LOCAL_TERMUX_URL).apply()
+                                        hasError = false
+                                        isLoading = true
+                                        webViewInstance?.loadUrl(LOCAL_TERMUX_URL)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                                ) {
+                                    Text("📱 Local Termux", fontSize = 11.sp, maxLines = 1)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        currentUrl = CLOUDFLARE_WORKER_URL
+                                        prefs.edit().putString("server_url", CLOUDFLARE_WORKER_URL).apply()
+                                        hasError = false
+                                        isLoading = true
+                                        webViewInstance?.loadUrl(CLOUDFLARE_WORKER_URL)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                                ) {
+                                    Text("☁️ Cloudflare", fontSize = 11.sp, maxLines = 1)
+                                }
+                            }
+
+                            TextButton(
+                                onClick = {
+                                    inputUrl = currentUrl
+                                    showSettingsDialog = true
+                                },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("⚙️ Change Custom URL", fontSize = 11.sp, color = Color(0xFF64748B))
                             }
                         }
                     }
@@ -292,7 +439,7 @@ fun ShreejiAppRoot() {
             text = {
                 Column {
                     Text(
-                        text = "Enter your distributor server host URL:",
+                        text = "Enter server host URL:",
                         fontSize = 12.sp,
                         color = Color(0xFF64748B)
                     )
@@ -303,9 +450,9 @@ fun ShreejiAppRoot() {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "• Emulator: http://shreejiapp-production.up.railway.app\n• Local Wi-Fi: http://192.168.x.x:3000\n• Production: https://your-domain.com",
+                        text = "• Local Termux: http://127.0.0.1:3000\n• Cloudflare: $CLOUDFLARE_WORKER_URL",
                         fontSize = 10.sp,
                         color = Color(0xFF94A3B8)
                     )
@@ -337,3 +484,4 @@ fun ShreejiAppRoot() {
         )
     }
 }
+

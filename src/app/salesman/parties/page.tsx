@@ -84,11 +84,18 @@ export default function SalesmanPartiesPage() {
     <AppShell
       title="My Assigned Chemists"
       actions={
-        <Link href="/salesman/parties/create">
-          <Button size="sm" variant="green" className="text-xs font-bold">
-            <Plus className="w-4 h-4 mr-1" /> Add Party
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/salesman/parties/map">
+            <Button size="sm" variant="outline" className="text-xs font-bold text-shreeji-blue bg-blue-50 border-blue-200 hover:bg-blue-100">
+              <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Route Map
+            </Button>
+          </Link>
+          <Link href="/salesman/parties/create">
+            <Button size="sm" variant="green" className="text-xs font-bold">
+              <Plus className="w-4 h-4 mr-1" /> Add Party
+            </Button>
+          </Link>
+        </div>
       }
     >
       <div className="space-y-4 max-w-5xl mx-auto animate-fade-in">

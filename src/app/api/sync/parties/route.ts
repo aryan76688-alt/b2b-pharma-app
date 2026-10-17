@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
       deliveryRoute,
       status = 'active',
       area,
+      latitude,
+      longitude,
     } = body;
 
     if (!partyName) {
@@ -92,6 +94,8 @@ export async function POST(req: NextRequest) {
              email = COALESCE($12, email),
              gst_number = COALESCE($13, gst_number),
              status = COALESCE($14, status),
+             latitude = COALESCE($15, latitude),
+             longitude = COALESCE($16, longitude),
              updated_at = NOW()
          WHERE id = $1`,
         [
@@ -109,16 +113,20 @@ export async function POST(req: NextRequest) {
           email || null,
           cleanGst,
           status,
+          typeof latitude === 'number' ? latitude : (parseFloat(latitude) || null),
+          typeof longitude === 'number' ? longitude : (parseFloat(longitude) || null),
         ]
       );
     } else {
       action = 'created';
       const codeToUse = cleanCode || `PRT-${Date.now().toString().slice(-4)}`;
+      const latVal = typeof latitude === 'number' ? latitude : (parseFloat(latitude) || null);
+      const lngVal = typeof longitude === 'number' ? longitude : (parseFloat(longitude) || null);
       const insertRes = await query(
         `INSERT INTO parties (
           party_code, party_name, delivery_route, address, address_line_1, address_line_2, address_line_3,
-          city, state, area, mobile, landline, email, gst_number, status, credit_limit, opening_balance, party_type
-        ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 50000, 0, 'chemist')
+          city, state, area, mobile, landline, email, gst_number, status, latitude, longitude, credit_limit, opening_balance, party_type
+        ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 50000, 0, 'chemist')
         RETURNING id`,
         [
           codeToUse,
@@ -135,6 +143,8 @@ export async function POST(req: NextRequest) {
           email || null,
           cleanGst,
           status,
+          latVal,
+          lngVal,
         ]
       );
       partyId = insertRes.rows[0].id;

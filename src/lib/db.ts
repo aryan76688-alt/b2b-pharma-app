@@ -41,6 +41,11 @@ export async function ensureDatabaseIndexes(): Promise<void> {
     const sql = `
       ALTER TABLE parties ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
       ALTER TABLE parties ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS address_line_1 TEXT;
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS address_line_2 TEXT;
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS address_line_3 TEXT;
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS delivery_route VARCHAR(150);
+      ALTER TABLE parties ADD COLUMN IF NOT EXISTS landline VARCHAR(50);
       CREATE INDEX IF NOT EXISTS idx_parties_lat_lng ON parties(latitude, longitude);
       CREATE INDEX IF NOT EXISTS idx_parties_party_code ON parties(party_code);
       CREATE INDEX IF NOT EXISTS idx_parties_party_name ON parties(party_name);
@@ -51,6 +56,11 @@ export async function ensureDatabaseIndexes(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_party_outstanding_snapshots_party ON party_outstanding_snapshots(party_id, snapshot_date DESC);
       CREATE INDEX IF NOT EXISTS idx_orders_party_date ON orders(party_id, order_date DESC);
       CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status, order_date DESC);
+
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(50) DEFAULT 'PCS';
+      ALTER TABLE products ALTER COLUMN packing DROP NOT NULL;
+      ALTER TABLE products ALTER COLUMN packing SET DEFAULT '10x10';
+      ALTER TABLE product_batches ALTER COLUMN expiry_date DROP NOT NULL;
     `;
     await pool.query(sql);
     indexesEnsured = true;

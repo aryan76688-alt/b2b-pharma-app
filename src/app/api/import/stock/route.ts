@@ -31,52 +31,71 @@ export async function POST(req: NextRequest) {
     let batchesUpdated = 0;
 
     await withTransaction(async (client) => {
-      // Record import metadata
-      const importMetaRes = await client.query(
-        `INSERT INTO stock_imports (uploaded_by, file_name, total_rows, status)
-         VALUES ($1, $2, $3, 'processing')
-         RETURNING id`,
-        [owner.id, fileName, totalRows]
-      );
-      const importId = importMetaRes.rows[0].id;
+      // Record import metadata safely
+      let importId = null;
+      try {
+        const importMetaRes = await client.query(
+          `INSERT INTO stock_imports (uploaded_by, file_name, total_rows, status)
+           VALUES ($1, $2, $3, 'processing')
+           RETURNING id`,
+          [owner.id, fileName, totalRows]
+        );
+        importId = importMetaRes.rows[0]?.id;
+      } catch (e) {
+        // Non-blocking if stock_imports table is missing
+      }
+
+      // Default safe expiry: 2 years from today
+      const defaultExpDate = new Date(Date.now() + 730 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       // 1. Upsert Products
       for (const p of products) {
+        const pCode = (p.productCode || '').trim();
+        if (!pCode) continue;
+
         const pRes = await client.query(
           `SELECT id FROM products WHERE product_code = $1`,
-          [p.productCode]
+          [pCode]
         );
+        const packingVal = p.packing || p.unit || '10x10';
+        const unitVal = p.unit || p.packing || 'PCS';
+        const companyVal = p.company || 'Shreeji 7';
+
         if (pRes.rows.length > 0) {
           await client.query(
             `UPDATE products 
              SET product_name = COALESCE($2, product_name), 
-                 unit = COALESCE($3, unit), 
-                 company = COALESCE($4, company),
+                 packing = COALESCE($3, packing),
+                 unit = COALESCE($4, unit), 
+                 company = COALESCE($5, company),
                  updated_at = NOW()
              WHERE id = $1`,
-            [pRes.rows[0].id, p.productName, p.unit, p.company]
+            [pRes.rows[0].id, p.productName, packingVal, unitVal, companyVal]
           );
           productsUpdated++;
         } else {
           await client.query(
-            `INSERT INTO products (product_code, product_name, unit, company, mrp, ptr, stock_qty)
-             VALUES ($1, $2, $3, $4, 0, 0, 0)`,
-             [p.productCode, p.productName, p.unit || 'PCS', p.company || 'Unknown']
+            `INSERT INTO products (product_code, product_name, packing, unit, company, mrp, ptr, stock_qty)
+             VALUES ($1, $2, $3, $4, $5, 0, 0, 0)`,
+             [pCode, p.productName, packingVal, unitVal, companyVal]
           );
           productsCreated++;
         }
       }
 
-      // 2. Upsert Batches & update product stock, mrp, ptr (defaults for legacy reasons)
+      // 2. Upsert Batches & update product stock, mrp, ptr
       for (const b of batches) {
-        // Find product
+        const pCode = (b.productCode || '').trim();
+        if (!pCode) continue;
+
         const pRes = await client.query(
           `SELECT id FROM products WHERE product_code = $1`,
-          [b.productCode]
+          [pCode]
         );
         if (pRes.rows.length === 0) continue;
         const productId = pRes.rows[0].id;
-        const batchNo = b.batchNo || 'DEFAULT';
+        const batchNo = (b.batchNo || 'REGULAR').trim() || 'REGULAR';
+        const validExpiry = b.expiryDate && !isNaN(new Date(b.expiryDate).getTime()) ? b.expiryDate : defaultExpDate;
 
         // Check existing batch
         const bRes = await client.query(
@@ -85,12 +104,12 @@ export async function POST(req: NextRequest) {
         );
 
         if (bRes.rows.length > 0) {
-          // Update existing batch (snapshot replacement)
+          // Update existing batch
           await client.query(
             `UPDATE product_batches 
-             SET stock_qty = $3, mrp = $4, ptr = $5, expiry_date = COALESCE($6, expiry_date), updated_at = NOW()
+             SET stock_qty = $2, mrp = $3, ptr = $4, expiry_date = COALESCE($5, expiry_date), updated_at = NOW()
              WHERE id = $1`,
-            [bRes.rows[0].id, productId, b.stockQty, b.mrp, b.ptr, b.expiryDate || null]
+            [bRes.rows[0].id, b.stockQty, b.mrp, b.ptr, validExpiry]
           );
           batchesUpdated++;
         } else {
@@ -98,44 +117,49 @@ export async function POST(req: NextRequest) {
           await client.query(
             `INSERT INTO product_batches (product_id, batch_no, stock_qty, mrp, ptr, expiry_date)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [productId, batchNo, b.stockQty, b.mrp, b.ptr, b.expiryDate || null]
+            [productId, batchNo, b.stockQty, b.mrp, b.ptr, validExpiry]
           );
           batchesCreated++;
         }
       }
 
       // 3. Recalculate stock_qty for all updated products
-      await client.query(`
-        UPDATE products p
-        SET stock_qty = COALESCE((
-          SELECT SUM(stock_qty)
-          FROM product_batches pb
-          WHERE pb.product_id = p.id
-        ), 0),
-        mrp = COALESCE((
-          SELECT mrp
-          FROM product_batches pb
-          WHERE pb.product_id = p.id
-          ORDER BY expiry_date ASC NULLS LAST
-          LIMIT 1
-        ), p.mrp),
-        ptr = COALESCE((
-          SELECT ptr
-          FROM product_batches pb
-          WHERE pb.product_id = p.id
-          ORDER BY expiry_date ASC NULLS LAST
-          LIMIT 1
-        ), p.ptr),
-        updated_at = NOW()
-        WHERE id IN (
-          SELECT id FROM products WHERE product_code = ANY($1)
-        )
-      `, [products.map((p: any) => p.productCode)]);
+      const validCodes = products.map((p: any) => (p.productCode || '').trim()).filter(Boolean);
+      if (validCodes.length > 0) {
+        await client.query(`
+          UPDATE products p
+          SET stock_qty = COALESCE((
+            SELECT SUM(stock_qty)
+            FROM product_batches pb
+            WHERE pb.product_id = p.id
+          ), 0),
+          mrp = COALESCE((
+            SELECT mrp
+            FROM product_batches pb
+            WHERE pb.product_id = p.id
+            ORDER BY expiry_date ASC NULLS LAST
+            LIMIT 1
+          ), p.mrp),
+          ptr = COALESCE((
+            SELECT ptr
+            FROM product_batches pb
+            WHERE pb.product_id = p.id
+            ORDER BY expiry_date ASC NULLS LAST
+            LIMIT 1
+          ), p.ptr),
+          updated_at = NOW()
+          WHERE id IN (
+            SELECT id FROM products WHERE product_code = ANY($1)
+          )
+        `, [validCodes]);
+      }
 
-      await client.query(
-        `UPDATE stock_imports SET status = 'completed', valid_rows = $2 WHERE id = $1`,
-        [importId, totalRows]
-      );
+      if (importId) {
+        await client.query(
+          `UPDATE stock_imports SET status = 'completed', valid_rows = $2 WHERE id = $1`,
+          [importId, totalRows]
+        );
+      }
     });
 
     return NextResponse.json({

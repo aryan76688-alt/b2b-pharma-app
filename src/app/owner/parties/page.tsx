@@ -148,6 +148,11 @@ export default function OwnerPartiesPage() {
       title="Chemist & Party Master"
       actions={
         <div className="flex items-center gap-2">
+          <Link href="/owner/parties/map">
+            <Button size="sm" variant="outline" className="text-xs bg-blue-50 border-blue-300 text-shreeji-blue font-bold hover:bg-blue-100">
+              <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Parties Map
+            </Button>
+          </Link>
           <Link href="/owner/import/parties">
             <Button size="sm" variant="outline" className="text-xs text-shreeji-blue border-blue-200">
               <FileSpreadsheet className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Import Party
