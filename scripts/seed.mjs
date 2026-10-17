@@ -11,13 +11,18 @@ const pool = new pg.Pool({ connectionString });
 
 async function runSeed() {
   console.log('🌱 Seeding Shreeji Healthcare Database...');
-  const seedFile = path.join(__dirname, '../database/seed/001_seed_data.sql');
+  const seedDir = path.join(__dirname, '../database/seed');
+  const files = fs.readdirSync(seedDir).filter(f => f.endsWith('.sql')).sort();
 
   const client = await pool.connect();
   try {
-    const sql = fs.readFileSync(seedFile, 'utf8');
-    await client.query(sql);
-    console.log('✅ Seed data inserted successfully!');
+    for (const file of files) {
+      console.log(`Applying seed: ${file}...`);
+      const sql = fs.readFileSync(path.join(seedDir, file), 'utf8');
+      await client.query(sql);
+      console.log(`✅ Seed applied: ${file}`);
+    }
+    console.log('🎉 All seed data inserted successfully!');
   } catch (err) {
     console.error('❌ Seed failed:', err);
     process.exit(1);
