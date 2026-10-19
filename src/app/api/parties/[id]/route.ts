@@ -94,9 +94,25 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const owner = await requireOwner(req);
+    const user = await requireAuth(req);
     const { id } = await params;
     const body = await req.json();
+
+    const isOwner = user.role === 'owner' || user.role === 'super_admin' || user.role === 'admin';
+
+    // If salesman, verify assignment
+    if (!isOwner) {
+      const checkRes = await query(
+        `SELECT id, assigned_salesman_id as "assignedSalesmanId" FROM parties WHERE id = $1`,
+        [id]
+      );
+      if (checkRes.rows.length === 0) {
+        return NextResponse.json({ success: false, error: 'Party not found' }, { status: 404 });
+      }
+      if (checkRes.rows[0].assignedSalesmanId !== user.id) {
+        return NextResponse.json({ success: false, error: 'You are not assigned to this party.' }, { status: 403 });
+      }
+    }
 
     const {
       partyName,
@@ -110,6 +126,9 @@ export async function PATCH(
       creditLimit,
       assignedSalesmanId,
       status,
+      latitude,
+      longitude,
+      deliveryRoute
     } = body;
 
     await query(
@@ -125,26 +144,32 @@ export async function PATCH(
            credit_limit = COALESCE($9, credit_limit),
            assigned_salesman_id = COALESCE($10, assigned_salesman_id),
            status = COALESCE($11, status),
+           latitude = COALESCE($12, latitude),
+           longitude = COALESCE($13, longitude),
+           delivery_route = COALESCE($14, delivery_route),
            updated_at = now()
-       WHERE id = $12`,
+       WHERE id = $15`,
       [
-        partyName,
-        mobile,
-        email,
-        gstNumber,
-        address,
-        city,
-        area,
-        partyType,
-        creditLimit,
-        assignedSalesmanId,
-        status,
+        isOwner ? (partyName ?? null) : null,
+        isOwner ? (mobile ?? null) : null,
+        isOwner ? (email ?? null) : null,
+        isOwner ? (gstNumber ?? null) : null,
+        isOwner ? (address ?? null) : null,
+        isOwner ? (city ?? null) : null,
+        isOwner ? (area ?? null) : null,
+        isOwner ? (partyType ?? null) : null,
+        isOwner ? (creditLimit ?? null) : null,
+        isOwner ? (assignedSalesmanId ?? null) : null,
+        isOwner ? (status ?? null) : null,
+        latitude ?? null,
+        longitude ?? null,
+        deliveryRoute ?? null,
         id,
       ]
     );
 
     await logAudit({
-      userId: owner.id,
+      userId: user.id,
       action: 'UPDATE_PARTY',
       entityType: 'PARTY',
       entityId: id,
@@ -158,7 +183,8 @@ export async function PATCH(
     if (req.headers.get('x-sync-source') !== 'envelope') {
       const updatedPartyRes = await query(
         `SELECT party_code as "partyCode", party_name as "partyName", mobile, email,
-                gst_number as "gstNumber", address, city, state, delivery_route as "deliveryRoute"
+                gst_number as "gstNumber", address, city, state, delivery_route as "deliveryRoute",
+                latitude, longitude
          FROM parties WHERE id = $1 LIMIT 1`,
         [id]
       );

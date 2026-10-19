@@ -19,6 +19,7 @@ import {
   Settings,
   ShieldCheck,
   LogOut,
+  Compass,
   MapPin,
   KeyRound,
   User,
@@ -59,6 +60,7 @@ export function BottomNav() {
   }
 
   const ownerMore: NavItem[] = [
+    { label: '🧭 Nearest Parties (Live Radar)', href: '/owner/parties/nearby', icon: Compass, highlight: true },
     { label: 'Manage Salesmen', href: '/owner/salesmen', icon: UserCheck },
     { label: 'Outstanding Aging', href: '/owner/outstanding', icon: Clock },
     { label: 'Promotional Schemes', href: '/owner/schemes', icon: BadgePercent },
@@ -70,6 +72,7 @@ export function BottomNav() {
   ];
 
   const salesmanMore: NavItem[] = [
+    { label: '🧭 Nearest Chemists (Live Radar)', href: '/salesman/parties/nearby', icon: Compass, highlight: true },
     { label: 'Active Schemes', href: '/salesman/schemes', icon: BadgePercent },
     { label: 'Tour Plan', href: '/salesman/tour-plan', icon: MapPin },
     { label: 'My Performance', href: '/salesman/reports', icon: BarChart3 },

@@ -9,6 +9,7 @@ import zlib from 'zlib';
 export interface GDriveSettings {
   webhook_url: string;
   api_key: string;
+  google_drive_api_key?: string;
   folder_name: string;
   notify_email: string;
   last_backup_time?: string | null;
@@ -17,7 +18,8 @@ export interface GDriveSettings {
 
 const DEFAULT_SETTINGS: GDriveSettings = {
   webhook_url: '',
-  api_key: 'SHREEJI_SECRET_KEY_2026',
+  api_key: process.env.GOOGLE_DRIVE_API_KEY || 'AIzaSyCvIXdK8OcrjxHRcTnHge8dqW2P5JdffGs',
+  google_drive_api_key: 'AIzaSyCvIXdK8OcrjxHRcTnHge8dqW2P5JdffGs',
   folder_name: 'Shreeji_Healthcare_Backups',
   notify_email: 'shreejiseven@gmail.com',
   last_backup_time: null,

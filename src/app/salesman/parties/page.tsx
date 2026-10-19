@@ -16,6 +16,7 @@ import {
   MapPin,
   ShoppingCart,
   Clock,
+  Compass,
 } from 'lucide-react';
 import { Party } from '@/types';
 import { cachePartiesLocally, getCachedPartiesLocally, initOfflineSyncListener } from '@/lib/offline-queue';
@@ -85,6 +86,11 @@ export default function SalesmanPartiesPage() {
       title="My Assigned Chemists"
       actions={
         <div className="flex items-center gap-2">
+          <Link href="/salesman/parties/nearby">
+            <Button size="sm" variant="outline" className="text-xs font-bold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100">
+              <Compass className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Nearest Chemists
+            </Button>
+          </Link>
           <Link href="/salesman/parties/map">
             <Button size="sm" variant="outline" className="text-xs font-bold text-shreeji-blue bg-blue-50 border-blue-200 hover:bg-blue-100">
               <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Route Map

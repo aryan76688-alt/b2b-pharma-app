@@ -14,6 +14,7 @@ import {
   Plus,
   Phone,
   MapPin,
+  Compass,
   Clock,
   CreditCard,
   User,
@@ -148,6 +149,11 @@ export default function OwnerPartiesPage() {
       title="Chemist & Party Master"
       actions={
         <div className="flex items-center gap-2">
+          <Link href="/owner/parties/nearby">
+            <Button size="sm" variant="outline" className="text-xs bg-emerald-50 border-emerald-300 text-emerald-700 font-bold hover:bg-emerald-100">
+              <Compass className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Nearest Parties
+            </Button>
+          </Link>
           <Link href="/owner/parties/map">
             <Button size="sm" variant="outline" className="text-xs bg-blue-50 border-blue-300 text-shreeji-blue font-bold hover:bg-blue-100">
               <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Parties Map

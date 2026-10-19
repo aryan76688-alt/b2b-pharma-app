@@ -77,6 +77,13 @@ export async function GET(req: NextRequest) {
       )`);
     }
 
+    const limitParam = searchParams.get('limit');
+    const limitClause = (limitParam === 'all' || limitParam === '-1') 
+      ? 'LIMIT 2500' 
+      : (limitParam && !isNaN(Number(limitParam))) 
+      ? `LIMIT ${Number(limitParam)}` 
+      : 'LIMIT 200';
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const listQuery = `
@@ -96,6 +103,7 @@ export async function GET(req: NextRequest) {
         p.opening_balance as "openingBalance",
         p.latitude,
         p.longitude,
+        p.delivery_route as "deliveryRoute",
         p.status,
         p.assigned_salesman_id as "assignedSalesmanId",
         u.full_name as "assignedSalesmanName",
@@ -112,26 +120,58 @@ export async function GET(req: NextRequest) {
       ) pos ON p.id = pos.party_id
       ${whereClause}
       ORDER BY p.party_name ASC
-      LIMIT 200
+      ${limitClause}
     `;
 
-    const res = await query(listQuery, params);
+    try {
+      const res = await query(listQuery, params);
+      cache.set(cacheKey, res.rows, 30);
 
-    cache.set(cacheKey, res.rows, 30);
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: res.rows,
-      },
-      {
-        headers: {
-          ETag: etag,
-          'Cache-Control': 'private, max-age=15, stale-while-revalidate=45',
-          'X-Cache': 'MISS',
+      return NextResponse.json(
+        {
+          success: true,
+          data: res.rows,
         },
+        {
+          headers: {
+            ETag: etag,
+            'Cache-Control': 'private, max-age=15, stale-while-revalidate=45',
+            'X-Cache': 'MISS',
+          },
+        }
+      );
+    } catch (dbErr: any) {
+      console.warn('[Parties API] Database offline, serving bundled parties.json:', dbErr?.message);
+      // Fallback to static bundled parties.json
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const jsonPath = path.join(process.cwd(), 'src', 'data', 'parties.json');
+        if (fs.existsSync(jsonPath)) {
+          let partiesList: any[] = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+          if (search) {
+            const q = search.toLowerCase();
+            partiesList = partiesList.filter((p: any) => 
+              (p.partyName && p.partyName.toLowerCase().includes(q)) ||
+              (p.partyCode && p.partyCode.toLowerCase().includes(q)) ||
+              (p.city && p.city.toLowerCase().includes(q))
+            );
+          }
+          if (city) {
+            partiesList = partiesList.filter((p: any) => p.city?.toLowerCase() === city.toLowerCase());
+          }
+          const maxCount = (limitParam === 'all' || limitParam === '-1') ? 2500 : (limitParam && !isNaN(Number(limitParam))) ? Number(limitParam) : 200;
+          return NextResponse.json({
+            success: true,
+            data: partiesList.slice(0, maxCount),
+            isFallback: true
+          });
+        }
+      } catch (fallbackErr) {
+        console.error('[Parties API] Fallback error:', fallbackErr);
       }
-    );
+      throw dbErr;
+    }
   } catch (error) {
     return handleAuthError(error);
   }

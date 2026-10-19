@@ -59,6 +59,7 @@ export interface Party {
   totalOutstanding?: number;
   latitude?: number | null;
   longitude?: number | null;
+  deliveryRoute?: string;
   createdAt: string;
   updatedAt?: string;
 }
