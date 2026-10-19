@@ -17,7 +17,8 @@ import {
   ShoppingCart,
   Layers,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -66,6 +67,19 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
   const [selectedParty, setSelectedParty] = useState<PartyMapItem | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
 
+  // Manual GPS Pinning State
+  const [showUnmappedModal, setShowUnmappedModal] = useState<boolean>(false);
+  const [unmappedSearch, setUnmappedSearch] = useState<string>('');
+  const [activePinParty, setActivePinParty] = useState<PartyMapItem | null>(null);
+  const [manualPinLocation, setManualPinLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isSavingPin, setIsSavingPin] = useState<boolean>(false);
+  const activePinPartyRef = useRef<PartyMapItem | null>(null);
+  const manualPinMarkerRef = useRef<any>(null);
+
+  useEffect(() => {
+    activePinPartyRef.current = activePinParty;
+  }, [activePinParty]);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -97,7 +111,7 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
   // Filter parties that have valid coordinates
   const mappedParties = useMemo(() => {
     return parties.filter(p => {
-      const hasCoords = p.latitude && p.longitude && !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude));
+      const hasCoords = p.latitude && p.longitude && !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude)) && Number(p.latitude) !== 0;
       if (!hasCoords) return false;
 
       if (selectedRoute !== 'all' && (p.deliveryRoute || 'Other') !== selectedRoute) {
@@ -115,6 +129,119 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
       return true;
     });
   }, [parties, selectedRoute, search]);
+
+  // Parties WITHOUT coordinates (need manual pin)
+  const unmappedParties = useMemo(() => {
+    return parties.filter(p => !p.latitude || !p.longitude || isNaN(Number(p.latitude)) || Number(p.latitude) === 0);
+  }, [parties]);
+
+  const filteredUnmappedParties = useMemo(() => {
+    if (!unmappedSearch.trim()) return unmappedParties;
+    const q = unmappedSearch.toLowerCase();
+    return unmappedParties.filter(p => 
+      (p.partyName || '').toLowerCase().includes(q) ||
+      (p.partyCode || '').toLowerCase().includes(q) ||
+      (p.city || '').toLowerCase().includes(q) ||
+      (p.address || '').toLowerCase().includes(q)
+    );
+  }, [unmappedParties, unmappedSearch]);
+
+  const handleStartPinningParty = (party: PartyMapItem) => {
+    setActivePinParty(party);
+    setManualPinLocation(null);
+    setShowUnmappedModal(false);
+    if (manualPinMarkerRef.current && mapInstanceRef.current) {
+      mapInstanceRef.current.removeLayer(manualPinMarkerRef.current);
+      manualPinMarkerRef.current = null;
+    }
+  };
+
+  const handleCancelPinning = () => {
+    setActivePinParty(null);
+    setManualPinLocation(null);
+    if (manualPinMarkerRef.current && mapInstanceRef.current) {
+      mapInstanceRef.current.removeLayer(manualPinMarkerRef.current);
+      manualPinMarkerRef.current = null;
+    }
+  };
+
+  const handleSaveManualPin = async () => {
+    if (!activePinParty || !manualPinLocation) return;
+    setIsSavingPin(true);
+    try {
+      const res = await fetch(`/api/parties/${activePinParty.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: manualPinLocation.lat,
+          longitude: manualPinLocation.lng,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setParties((prev) =>
+          prev.map((p) =>
+            p.id === activePinParty.id
+              ? { ...p, latitude: manualPinLocation.lat, longitude: manualPinLocation.lng }
+              : p
+          )
+        );
+        alert(`Location saved for ${activePinParty.partyName}!`);
+        if (manualPinMarkerRef.current && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(manualPinMarkerRef.current);
+          manualPinMarkerRef.current = null;
+        }
+        setActivePinParty(null);
+        setManualPinLocation(null);
+      } else {
+        alert(json.error?.message || 'Failed to save location.');
+      }
+    } catch (err: any) {
+      alert('Error saving location: ' + err.message);
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
+
+  const handleUseMyCurrentLocationForPin = () => {
+    if (!navigator.geolocation || !mapInstanceRef.current) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setManualPinLocation({ lat, lng });
+        import('leaflet').then((L) => {
+          const map = mapInstanceRef.current;
+          if (!map) return;
+          map.setView([lat, lng], 16);
+          if (manualPinMarkerRef.current) {
+            manualPinMarkerRef.current.setLatLng([lat, lng]);
+          } else {
+            const pinIcon = L.divIcon({
+              className: 'manual-drop-pin',
+              html: `
+                <div style="position: relative; width: 36px; height: 44px; display: flex; flex-direction: column; align-items: center; cursor: grab;">
+                  <div style="width: 32px; height: 32px; background: #ef4444; border: 3px solid #ffffff; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 12px rgba(239,68,68,0.5); display: flex; align-items: center; justify-content: center;">
+                    <div style="transform: rotate(45deg); width: 10px; height: 10px; background: #ffffff; border-radius: 50%;"></div>
+                  </div>
+                  <div style="width: 10px; height: 4px; background: rgba(0,0,0,0.3); border-radius: 50%; margin-top: 1px;"></div>
+                </div>
+              `,
+              iconSize: [36, 44],
+              iconAnchor: [18, 42],
+            });
+            manualPinMarkerRef.current = L.marker([lat, lng], { icon: pinIcon, draggable: true }).addTo(map);
+            manualPinMarkerRef.current.on('dragend', (de: any) => {
+              const p = de.target.getLatLng();
+              setManualPinLocation({ lat: p.lat, lng: p.lng });
+            });
+          }
+        });
+      },
+      (err) => alert('Could not get GPS: ' + err.message),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const allRoutes = useMemo(() => {
     const set = new Set<string>();
@@ -187,6 +314,36 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+        // Click on map to set or move pin when pinning a party
+        map.on('click', (e: any) => {
+          if (!activePinPartyRef.current) return;
+          const { lat, lng } = e.latlng;
+          setManualPinLocation({ lat, lng });
+
+          if (manualPinMarkerRef.current) {
+            manualPinMarkerRef.current.setLatLng([lat, lng]);
+          } else {
+            const pinIcon = L.divIcon({
+              className: 'manual-drop-pin',
+              html: `
+                <div style="position: relative; width: 36px; height: 44px; display: flex; flex-direction: column; align-items: center; cursor: grab;">
+                  <div style="width: 32px; height: 32px; background: #ef4444; border: 3px solid #ffffff; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 12px rgba(239,68,68,0.5); display: flex; align-items: center; justify-content: center;">
+                    <div style="transform: rotate(45deg); width: 10px; height: 10px; background: #ffffff; border-radius: 50%;"></div>
+                  </div>
+                  <div style="width: 10px; height: 4px; background: rgba(0,0,0,0.3); border-radius: 50%; margin-top: 1px;"></div>
+                </div>
+              `,
+              iconSize: [36, 44],
+              iconAnchor: [18, 42],
+            });
+            manualPinMarkerRef.current = L.marker([lat, lng], { icon: pinIcon, draggable: true }).addTo(map);
+            manualPinMarkerRef.current.on('dragend', (de: any) => {
+              const p = de.target.getLatLng();
+              setManualPinLocation({ lat: p.lat, lng: p.lng });
+            });
+          }
+        });
+
         markersLayerRef.current = L.layerGroup().addTo(map);
         mapInstanceRef.current = map;
       }
@@ -200,7 +357,9 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
 
       const bounds: [number, number][] = [];
 
-      mappedParties.forEach((p) => {
+      // LAG PREVENTION: Limit rendered markers to max 100 to ensure silky smooth 60fps panning
+      const partiesToRender = mappedParties.slice(0, 100);
+      partiesToRender.forEach((p) => {
         const lat = Number(p.latitude);
         const lng = Number(p.longitude);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -394,6 +553,16 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Manual Pin Unmapped Chemist button */}
+          <button
+            onClick={() => setShowUnmappedModal(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1 active:scale-95 transition-all shadow-sm"
+            title="Set GPS Location for Unmapped Chemist"
+          >
+            <MapPin className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pin Unmapped ({unmappedParties.length})</span>
+          </button>
+
           {/* Fullscreen Button */}
           <button
             onClick={handleToggleFullscreen}
@@ -503,13 +672,209 @@ export default function PartiesMapView({ userRole = 'owner', backUrl = '/owner/p
           </div>
         )}
 
-        {mappedParties.length === 0 && !loading && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-slate-900/95 border border-amber-500/40 rounded-xl shadow-xl text-xs text-amber-300 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-400" />
-            <span>No mapped chemists found for this route/search query.</span>
+        {/* Active Pinning Floating Banner */}
+        {activePinParty && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-lg bg-slate-900/95 border-2 border-amber-500 rounded-2xl shadow-2xl p-3.5 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-amber-500 text-slate-950 uppercase tracking-wider">
+                    Setting GPS Pin
+                  </span>
+                  <span className="text-xs font-mono font-bold text-slate-400">
+                    {activePinParty.partyCode}
+                  </span>
+                </div>
+                <h4 className="text-sm font-extrabold text-white truncate mt-1">
+                  {activePinParty.partyName}
+                </h4>
+                <p className="text-[11px] text-slate-400 truncate">
+                  {activePinParty.address}, {activePinParty.city}
+                </p>
+                <p className="text-[11px] text-amber-300 mt-1 flex items-center gap-1 font-medium">
+                  {manualPinLocation ? (
+                    <>
+                      <span>📍 Lat: {manualPinLocation.lat.toFixed(5)}, Lng: {manualPinLocation.lng.toFixed(5)}</span>
+                      <span className="text-[10px] text-slate-400">(Drag pin to adjust)</span>
+                    </>
+                  ) : (
+                    <span>👉 Click anywhere on map to drop pin or use current GPS</span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={handleCancelPinning}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+              <button
+                onClick={handleUseMyCurrentLocationForPin}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all"
+              >
+                <Compass className="w-3.5 h-3.5 text-blue-400" />
+                <span>My Current GPS</span>
+              </button>
+
+              <button
+                onClick={handleSaveManualPin}
+                disabled={!manualPinLocation || isSavingPin}
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md ${
+                  manualPinLocation && !isSavingPin
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                }`}
+              >
+                {isSavingPin ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Save Location (સાચવો)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleCancelPinning}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State Banner */}
+        {mappedParties.length === 0 && !loading && !activePinParty && (
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 px-5 py-4 bg-slate-900/95 border border-amber-500/40 rounded-2xl shadow-2xl text-xs text-amber-300 flex flex-col items-center gap-3 max-w-sm text-center backdrop-blur-md">
+            <AlertCircle className="w-8 h-8 text-amber-400" />
+            <div>
+              <p className="font-bold text-white text-sm">No Chemist Locations Mapped Yet</p>
+              <p className="text-[11px] text-slate-400 mt-1">All {unmappedParties.length} chemists are ready to be pinned manually with GPS.</p>
+            </div>
+            <button
+              onClick={() => setShowUnmappedModal(true)}
+              className="w-full px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <MapPin className="w-4 h-4" />
+              <span>📍 Set Party Pins Manually ({unmappedParties.length})</span>
+            </button>
           </div>
         )}
       </div>
+
+      {/* UNMAPPED PARTIES MODAL */}
+      {showUnmappedModal && (
+        <div className="fixed inset-0 z-[9999999] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-sm">
+                    Select Chemist to Pin (પાર્ટી પિન સેટ કરો)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {unmappedParties.length} chemists without GPS coordinates
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUnmappedModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Search */}
+            <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={unmappedSearch}
+                  onChange={(e) => setUnmappedSearch(e.target.value)}
+                  placeholder="Search by party name, code, city..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Modal List */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-slate-800/40">
+              {filteredUnmappedParties.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400">
+                  No unmapped chemists found matching your search.
+                </div>
+              ) : (
+                filteredUnmappedParties.slice(0, 100).map((party) => (
+                  <div
+                    key={party.id}
+                    className="pt-2 first:pt-0 flex items-center justify-between gap-3 hover:bg-slate-800/40 p-2 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
+                          {party.partyCode}
+                        </span>
+                        {party.city && (
+                          <span className="text-[10px] font-semibold text-blue-400">
+                            {party.city}
+                          </span>
+                        )}
+                        {party.deliveryRoute && (
+                          <span className="text-[10px] font-semibold text-emerald-400">
+                            {party.deliveryRoute}
+                          </span>
+                        )}
+                      </div>
+                      <h5 className="font-bold text-xs text-white truncate mt-1">
+                        {party.partyName}
+                      </h5>
+                      {party.address && (
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {party.address}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleStartPinningParty(party)}
+                      className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shrink-0 shadow-sm flex items-center gap-1 active:scale-95 transition-all"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Set Pin</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Showing up to 100 of {filteredUnmappedParties.length} chemists</span>
+              <button
+                onClick={() => setShowUnmappedModal(false)}
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
