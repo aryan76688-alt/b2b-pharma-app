@@ -27,14 +27,46 @@ export default function OutstandingImportPage() {
     reader.onload = (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
         const wsName = wb.SheetNames[0];
         const ws = wb.Sheets[wsName];
         
-        // Use raw objects to parse Headers properly
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[];
-        
-        if (rows.length === 0) throw new Error("Excel file is empty");
+        // Scan first 25 rows for true Marg ERP header
+        const rawArray = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+        if (!rawArray || rawArray.length === 0) throw new Error("Excel file is empty");
+
+        const knownHeaderTokens = ['name of the party', 'party', 'total outstanding', 'gstin', 'pan', 'address', 'route', 'station', 'mobile', 'phone'];
+        let headerIdx = 0;
+        let maxScore = 0;
+        for (let i = 0; i < Math.min(25, rawArray.length); i++) {
+          const row = rawArray[i];
+          if (!Array.isArray(row)) continue;
+          let score = 0;
+          row.forEach(cell => {
+            if (typeof cell === 'string') {
+              const lc = cell.toLowerCase().trim();
+              if (knownHeaderTokens.some(kw => lc.includes(kw))) score++;
+            }
+          });
+          if (score > maxScore) {
+            maxScore = score;
+            headerIdx = i;
+          }
+        }
+
+        const headers = (rawArray[headerIdx] || []).map(h => String(h || '').trim()).filter(Boolean);
+        const rows: any[] = [];
+        for (let i = headerIdx + 1; i < rawArray.length; i++) {
+          const r = rawArray[i];
+          if (!r || r.every(c => c === '' || c === null || c === undefined)) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, col) => {
+            obj[h] = r[col] !== undefined ? r[col] : '';
+          });
+          rows.push(obj);
+        }
+
+        if (rows.length === 0) throw new Error("No data rows found in Excel sheet.");
 
         setExcelData(rows);
         setStep(2);
@@ -51,17 +83,9 @@ export default function OutstandingImportPage() {
     setLoading(true);
     setError(null);
     
-    // We send the raw Excel data directly to the server with a static mapping format
     const formData = new FormData();
     formData.append('file', file as Blob, file?.name);
-    // Explicit mapping to handle both new and old columns seamlessly
-    formData.append('mapping', JSON.stringify({
-      partyCode: 'Party',
-      totalOutstanding: 'Total Outstanding',
-      pendingDays: 'Days Since Last Payment',
-      lastBillDate: 'Last Bill Date',
-      lastPaymentDate: 'Last Payment Received Date'
-    }));
+    formData.append('mapping', JSON.stringify({}));
 
     try {
       const res = await fetch('/api/import/outstanding', {

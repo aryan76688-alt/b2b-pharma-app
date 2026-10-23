@@ -94,6 +94,8 @@ export async function GET(req: NextRequest) {
         p.mobile,
         p.email,
         p.gst_number as "gstNumber",
+        p.pan_number as "panNumber",
+        p.drug_licenses as "drugLicenses",
         p.address,
         p.state,
         p.city,
@@ -216,12 +218,18 @@ export async function POST(req: NextRequest) {
     const latVal = latitude !== undefined && latitude !== null && latitude !== '' ? Number(latitude) : null;
     const lngVal = longitude !== undefined && longitude !== null && longitude !== '' ? Number(longitude) : null;
 
+    const cleanLicenses = Array.isArray(body.drugLicenses) 
+      ? body.drugLicenses.map((l: any) => String(l).trim()).filter(Boolean)
+      : Array.isArray(body.drug_licenses)
+      ? body.drug_licenses.map((l: any) => String(l).trim()).filter(Boolean)
+      : null;
+
     const insertRes = await query(
       `INSERT INTO parties (
         party_code, party_name, mobile, email, gst_number, address,
         state, city, area, party_type, credit_limit, opening_balance,
-        assigned_salesman_id, latitude, longitude, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
+        assigned_salesman_id, latitude, longitude, drug_licenses, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'active')
       RETURNING id, party_code as "partyCode", party_name as "partyName", mobile, city, area, party_type as "partyType", latitude, longitude`,
       [
         partyCode,
@@ -239,6 +247,7 @@ export async function POST(req: NextRequest) {
         assignedSalesman,
         latVal,
         lngVal,
+        cleanLicenses && cleanLicenses.length > 0 ? cleanLicenses : null,
       ]
     );
 

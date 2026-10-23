@@ -56,6 +56,9 @@ export async function POST(req: NextRequest) {
           if (res4.rows.length > 0) existingId = res4.rows[0].id;
         }
 
+        const parsedLat = p.latitude !== undefined && p.latitude !== '' && !isNaN(Number(p.latitude)) ? Number(p.latitude) : null;
+        const parsedLng = p.longitude !== undefined && p.longitude !== '' && !isNaN(Number(p.longitude)) ? Number(p.longitude) : null;
+
         if (existingId) {
           // Update
           await client.query(
@@ -73,12 +76,15 @@ export async function POST(req: NextRequest) {
                  email = COALESCE($12, email),
                  gst_number = COALESCE($13, gst_number),
                  status = COALESCE($14, status),
+                 latitude = COALESCE($15, latitude),
+                 longitude = COALESCE($16, longitude),
                  updated_at = NOW()
              WHERE id = $1`,
             [
               existingId, p.partyName, p.partyCode, p.deliveryRoute, 
               p.addressLine1, p.addressLine2, p.addressLine3, p.city, p.state, 
-              p.mobile, p.landline, p.email, p.gstNumber, p.status
+              p.mobile, p.landline, p.email, p.gstNumber, p.status,
+              parsedLat, parsedLng
             ]
           );
           partiesUpdated++;
@@ -87,8 +93,8 @@ export async function POST(req: NextRequest) {
           await client.query(
             `INSERT INTO parties (
               party_code, party_name, delivery_route, address_line_1, address_line_2, address_line_3,
-              city, state, mobile, landline, email, gst_number, status, address, area
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+              city, state, mobile, landline, email, gst_number, status, address, area, latitude, longitude
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
             [
               p.partyCode || `TMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
               p.partyName,
@@ -104,7 +110,9 @@ export async function POST(req: NextRequest) {
               p.gstNumber,
               p.status || 'active',
               [p.addressLine1, p.addressLine2, p.addressLine3].filter(Boolean).join(', ') || 'Unknown Address',
-              p.city || 'Unknown'
+              p.city || 'Unknown',
+              parsedLat,
+              parsedLng
             ]
           );
           partiesCreated++;

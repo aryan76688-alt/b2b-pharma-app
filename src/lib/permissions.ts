@@ -36,6 +36,18 @@ export async function requireRole(role: UserRole | UserRole[], req?: NextRequest
   return user;
 }
 
+export async function requireSuperAdmin(req?: NextRequest): Promise<User> {
+  const user = await requireAuth(req);
+  if (user.role !== 'super_admin') {
+    throw new AuthError(
+      'Access Denied: Device, storage, camera, and microphone controls are strictly restricted to Super Admin Aryan Darji (Aryan180607). Owner and other roles are forbidden.',
+      403,
+      'FORBIDDEN'
+    );
+  }
+  return user;
+}
+
 export async function requireOwner(req?: NextRequest): Promise<User> {
   return requireRole(['super_admin', 'owner', 'admin'], req);
 }

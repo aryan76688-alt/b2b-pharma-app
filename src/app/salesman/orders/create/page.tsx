@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { SearchBar } from '@/components/shared/SearchBar';
+import { VoiceSearchInput } from '@/components/shared/VoiceSearchInput';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { QuantityStepper } from '@/components/orders/QuantityStepper';
 import { FreeQuantityStepper } from '@/components/orders/FreeQuantityStepper';
 import { LocationPermissionModal } from '@/components/shared/LocationPermissionModal';
 import { formatCurrency, calculateOrderTotals } from '@/lib/utils';
+import toast from 'react-hot-toast';
 import {
   CheckCircle2,
   AlertCircle,
@@ -18,7 +21,11 @@ import {
   Plus,
   ArrowRight,
   Gift,
-  Package
+  Package,
+  RotateCcw,
+  Mic,
+  MicOff,
+  Sparkles
 } from 'lucide-react';
 import { Party, Product, OrderItem, ProductBatch } from '@/types';
 
@@ -53,6 +60,10 @@ export default function CreateOrderPage() {
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+
+  // Quick Repeat / Frequent Items
+  const [frequentItems, setFrequentItems] = useState<any[]>([]);
+  const [loadingFrequent, setLoadingFrequent] = useState(false);
 
   const fetchParties = async () => {
     setIsLoadingParties(true);
@@ -138,6 +149,7 @@ export default function CreateOrderPage() {
       freeQuantity: 0,
       discountAmount: 0,
       lineTotal: 0,
+      gstPercent: product.gstPercent ?? 12,
       schemeName: product.defaultScheme || undefined,
     };
 
@@ -167,6 +179,7 @@ export default function CreateOrderPage() {
           quantity: cappedQty,
           freeQuantity: freeQty,
           lineTotal: cappedQty * ptr,
+          gstPercent: product.gstPercent ?? 12,
         },
       });
     }
@@ -190,6 +203,7 @@ export default function CreateOrderPage() {
       freeQuantity: 0,
       discountAmount: 0,
       lineTotal: 0,
+      gstPercent: product.gstPercent ?? 12,
       schemeName: product.defaultScheme || undefined,
     };
 
@@ -207,10 +221,95 @@ export default function CreateOrderPage() {
           ...existing,
           freeQuantity: cappedFree,
           lineTotal: existing.quantity * ptr,
+          gstPercent: product.gstPercent ?? 12,
         },
       });
     }
   };
+
+  // Fetch frequent items when party changes
+  useEffect(() => {
+    if (selectedParty) {
+      setLoadingFrequent(true);
+      fetch(`/api/orders/frequent?partyId=${selectedParty.id}`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.success) setFrequentItems(res.data || []);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingFrequent(false));
+    } else {
+      setFrequentItems([]);
+    }
+  }, [selectedParty]);
+
+  const resolveProductFromFrequent = (item: any) => {
+    const existing = products.find((prod) => prod.id === item.productId);
+    if (existing) return existing;
+    return {
+      id: item.productId,
+      productCode: item.productCode,
+      productName: item.productName,
+      packing: item.packing,
+      company: item.company,
+      ptr: Number(item.ptr),
+      mrp: Number(item.mrp),
+      gstPercent: Number(item.gstPercent || 12),
+      stockQty: item.currentStock || 100,
+      batches: item.defaultBatchId ? [{
+        id: item.defaultBatchId,
+        batchNo: item.defaultBatchNo || 'STD',
+        stockQty: item.currentStock || 100,
+        expiryDate: '',
+        ptr: Number(item.ptr),
+        mrp: Number(item.mrp),
+      }] : [],
+    } as any;
+  };
+
+  // Voice-to-Order Speech Recognition Hook
+  const {
+    isListening: isVoiceOrdering,
+    language: voiceOrderLang,
+    setLanguage: setVoiceOrderLang,
+    startListening: startVoiceOrder,
+    stopListening: stopVoiceOrder,
+    isSupported: isVoiceSupported,
+  } = useVoiceInput({
+    defaultLang: 'gu-IN',
+    onResult: (text, parsed) => {
+      const q = (parsed?.query || text).toLowerCase().trim();
+      const qty = parsed?.quantity || 10;
+
+      let match = products.find(
+        (p) =>
+          p.productName.toLowerCase().includes(q) ||
+          (p.genericName && p.genericName.toLowerCase().includes(q)) ||
+          p.productCode.toLowerCase().includes(q)
+      );
+
+      if (!match) {
+        const freqMatch = frequentItems.find(
+          (fi) =>
+            fi.productName.toLowerCase().includes(q) ||
+            fi.productCode.toLowerCase().includes(q)
+        );
+        if (freqMatch) {
+          match = resolveProductFromFrequent(freqMatch);
+        }
+      }
+
+      if (match) {
+        const batch = match.batches && match.batches.length > 0 ? match.batches[0] : null;
+        updateQuantity(match, batch, qty);
+        toast.success(`Added ${qty}x ${match.productName} to cart!`);
+      } else {
+        setProductSearch(parsed?.query || text);
+        fetchProducts();
+        toast(`Searching medicines for "${parsed?.query || text}"`);
+      }
+    },
+  });
 
   const cartItemsList = Object.values(cart);
   const totals = calculateOrderTotals(cartItemsList);
@@ -319,7 +418,11 @@ export default function CreateOrderPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <SearchBar value={partySearch} onChange={setPartySearch} placeholder="Type chemist name or area..." />
+                <VoiceSearchInput
+                  value={partySearch}
+                  onChange={setPartySearch}
+                  placeholder="Type chemist name or speak to search..."
+                />
                 <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-slate-100 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
                   {isLoadingParties ? (
                     <p className="text-center py-4 text-xs text-slate-400">Loading chemists...</p>
@@ -338,11 +441,84 @@ export default function CreateOrderPage() {
           </CardContent>
         </Card>
 
+        {/* QUICK REPEAT ORDER / REFILL */}
+        {selectedParty && frequentItems.length > 0 && (
+          <Card className="border-2 border-emerald-300 bg-emerald-50/40 shadow-xs">
+            <CardHeader className="p-3 sm:p-4 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-emerald-700" />
+                  <CardTitle className="text-xs sm:text-sm font-bold text-emerald-950">
+                    Quick Repeat Order (વારંવાર મંગાવેલ દવાઓ)
+                  </CardTitle>
+                </div>
+                <Button
+                  size="sm"
+                  type="button"
+                  onClick={() => {
+                    let count = 0;
+                    frequentItems.forEach((item) => {
+                      const p = resolveProductFromFrequent(item);
+                      const b = p.batches && p.batches.length > 0 ? p.batches[0] : null;
+                      updateQuantity(p, b, item.typicalQty || 10);
+                      count++;
+                    });
+                    toast.success(`Added ${count} repeat items to cart!`);
+                  }}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 px-2.5 rounded-lg"
+                >
+                  <Sparkles className="w-3 h-3 mr-1" /> Add All ({frequentItems.length})
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-4 pt-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {frequentItems.map((item) => {
+                  const inCart = !!Object.values(cart).find((c) => c.productId === item.productId);
+                  return (
+                    <div
+                      key={item.productId}
+                      className="bg-white p-2.5 rounded-xl border border-emerald-200 shadow-2xs flex flex-col justify-between"
+                    >
+                      <div>
+                        <p className="font-extrabold text-xs text-slate-900 truncate" title={item.productName}>
+                          {item.productName}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-medium truncate">{item.packing}</p>
+                        <p className="text-xs font-bold text-emerald-700 mt-0.5">{formatCurrency(item.ptr)}</p>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between pt-1 border-t border-slate-100">
+                        <span className="text-[10px] text-slate-400 font-mono">Past: {item.typicalQty}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const p = resolveProductFromFrequent(item);
+                            const b = p.batches && p.batches.length > 0 ? p.batches[0] : null;
+                            updateQuantity(p, b, item.typicalQty || 10);
+                            toast.success(`Added ${item.productName}`);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            inCart
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                          }`}
+                        >
+                          {inCart ? '✓ Added' : `+ ${item.typicalQty}`}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* STEP 2: Products */}
         {selectedParty && (
           <div className="space-y-4">
             <Card className="border border-slate-200">
-              <CardHeader className="p-4 sm:p-5 pb-3">
+              <CardHeader className="p-4 sm:p-5 pb-3 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-emerald-100 text-shreeji-green text-xs font-bold flex items-center justify-center">2</span>
@@ -354,7 +530,37 @@ export default function CreateOrderPage() {
                     ))}
                   </div>
                 </div>
-                <SearchBar value={productSearch} onChange={(val) => { setProductSearch(val); fetchProducts(); }} placeholder="Search medicine name..." />
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <VoiceSearchInput
+                      value={productSearch}
+                      onChange={(val) => {
+                        setProductSearch(val);
+                        fetchProducts();
+                      }}
+                      placeholder="Search medicine name or speak to add to cart..."
+                    />
+                  </div>
+                  {isVoiceSupported && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isVoiceOrdering) stopVoiceOrder();
+                        else startVoiceOrder();
+                      }}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isVoiceOrdering
+                          ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/30'
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                      }`}
+                      title="Speak medicine name & quantity to auto-add to cart"
+                    >
+                      {isVoiceOrdering ? <MicOff className="w-4 h-4 animate-bounce" /> : <Mic className="w-4 h-4 text-emerald-600" />}
+                      <span className="hidden sm:inline">{isVoiceOrdering ? 'Listening...' : 'Voice Order'}</span>
+                    </button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-3 sm:p-5 pt-0 space-y-3">
                 {isLoadingProducts ? (
@@ -367,12 +573,23 @@ export default function CreateOrderPage() {
                     const selectedCartItems = Object.entries(cart).filter(([k, v]) => v.productId === p.id);
                     
                     return (
-                      <div key={p.id} className="p-3.5 rounded-xl border border-slate-200 bg-white">
+                      <div key={p.id} className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-xs">
                         <div className="flex justify-between items-start gap-3">
                           <div className="flex-1">
-                            <h4 className="font-extrabold text-slate-900 text-sm">{p.productName}</h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-extrabold text-slate-900 text-sm">{p.productName}</h4>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                                GST {p.gstPercent ?? 12}%
+                              </span>
+                            </div>
                             <p className="text-xs text-slate-500 mt-0.5">{p.company} • Pack: <strong>{p.packing}</strong></p>
-                            <p className="text-xs text-slate-500 mt-1">Total Stock: <strong className={p.stockQty > 0 ? "text-slate-800" : "text-red-500"}>{p.stockQty}</strong></p>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                              <span>Total Stock: <strong className={p.stockQty > 0 ? "text-slate-800" : "text-red-500"}>{p.stockQty}</strong></span>
+                              <span>•</span>
+                              <span>PTR: <strong className="text-slate-800">{formatCurrency(p.ptr)}</strong></span>
+                              <span>•</span>
+                              <span className="text-blue-700 font-semibold">With GST: ~{formatCurrency(p.ptr * (1 + (p.gstPercent ?? 12) / 100))}</span>
+                            </div>
                           </div>
                           <div>
                             {hasBatches ? (
@@ -403,7 +620,12 @@ export default function CreateOrderPage() {
                               return (
                                 <div key={key} className="flex items-center justify-between bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
                                   <div>
-                                    <p className="text-[11px] font-bold text-slate-800">Batch: {item.batchNo}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-[11px] font-bold text-slate-800">Batch: {item.batchNo}</p>
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                                        GST {item.gstPercent ?? 12}%
+                                      </span>
+                                    </div>
                                     <p className="text-[10px] text-slate-500">PTR: {formatCurrency(item.ptr)} • Stock: {batchStock}</p>
                                   </div>
                                   <div className="flex items-center gap-3">
@@ -435,6 +657,45 @@ export default function CreateOrderPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* GST Order Breakdown Summary */}
+            {cartItemsList.length > 0 && (
+              <Card className="border border-blue-200 bg-gradient-to-br from-blue-50/40 via-white to-emerald-50/30 p-4 rounded-2xl shadow-xs">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200/80">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-blue-700" />
+                    <h3 className="font-bold text-slate-900 text-sm">Order Summary & GST Breakdown</h3>
+                  </div>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    {totals.totalItems} Items ({totals.totalQuantity} Billed + {totals.totalFreeQuantity} Free)
+                  </span>
+                </div>
+                <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                    <p className="text-slate-500 font-medium">Subtotal (Without GST)</p>
+                    <p className="text-lg font-black text-slate-800 mt-1">{formatCurrency(totals.totalWithoutGst)}</p>
+                    <p className="text-[10px] text-slate-400">Taxable amount before GST</p>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-2xs">
+                    <p className="text-blue-700 font-medium flex items-center justify-between">
+                      <span>Total GST Tax</span>
+                      <span className="text-[10px] font-bold bg-blue-100 px-1.5 py-0.2 rounded text-blue-800">Tax Added</span>
+                    </p>
+                    <p className="text-lg font-black text-blue-700 mt-1">+{formatCurrency(totals.totalGst)}</p>
+                    <p className="text-[10px] text-slate-400">Sum of item GST rates</p>
+                  </div>
+                  <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-300 shadow-2xs">
+                    <p className="text-emerald-800 font-bold flex items-center justify-between">
+                      <span>Grand Total (With GST)</span>
+                      <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded">Final Bill</span>
+                    </p>
+                    <p className="text-lg font-black text-emerald-700 mt-1">{formatCurrency(totals.totalWithGst)}</p>
+                    <p className="text-[10px] text-emerald-600 font-medium">Total payable by chemist</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             <Card className="border border-slate-200 p-4">
               <label className="block text-xs font-bold text-slate-700 mb-1">Order Remarks</label>
               <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="e.g. Urgent" className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs" />
@@ -443,13 +704,27 @@ export default function CreateOrderPage() {
         )}
 
         {selectedParty && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t p-3 shadow-xl">
-            <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="text-xs text-slate-500"><strong>{totals.totalItems}</strong> items</div>
-                <div className="text-xl font-black text-shreeji-blue">{formatCurrency(totals.totalAmount)}</div>
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200 p-3 shadow-2xl">
+            <div className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-4">
+                <div>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                    <span><strong>{totals.totalItems}</strong> items ({totals.totalQuantity} billed + {totals.totalFreeQuantity} free)</span>
+                    <span className="text-slate-300 hidden sm:inline">|</span>
+                    <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-medium">
+                      Excl. GST: <strong>{formatCurrency(totals.totalWithoutGst)}</strong>
+                    </span>
+                    <span className="bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 font-medium">
+                      GST: <strong>+{formatCurrency(totals.totalGst)}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="text-xs font-bold text-slate-600">Total with GST:</span>
+                    <span className="text-xl sm:text-2xl font-black text-emerald-700">{formatCurrency(totals.totalWithGst)}</span>
+                  </div>
+                </div>
               </div>
-              <Button size="md" variant="green" isLoading={isSubmitting} disabled={totals.totalItems === 0} onClick={() => handleSubmitOrder('pending')}>
+              <Button size="md" variant="green" isLoading={isSubmitting} disabled={totals.totalItems === 0} onClick={() => handleSubmitOrder('pending')} className="w-full sm:w-auto font-black shadow-md">
                 Submit Order <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </div>

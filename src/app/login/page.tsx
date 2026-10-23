@@ -29,15 +29,26 @@ export default function LoginPage() {
   const [rememberDevice, setRememberDevice] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isApk, setIsApk] = useState(false);
 
   const { login } = useAuth();
   const router = useRouter();
 
-  // Pre-load remembered identifier
+  // Pre-load remembered identifier & detect APK environment
   useEffect(() => {
     const saved = localStorage.getItem("shreeji_remembered_id");
     if (saved) {
       setIdentifier(saved);
+    }
+
+    if (typeof window !== "undefined") {
+      const search = window.location.search || "";
+      const isAndroidBridge = Boolean((window as any).AndroidBridge || (window as any).isAndroidApp);
+      const isModeApk = search.includes("mode=apk") || window.location.hash.includes("mode=apk");
+      const isCustomUA = /shreeji/i.test(navigator.userAgent);
+      if (isAndroidBridge || isModeApk || isCustomUA) {
+        setIsApk(true);
+      }
     }
   }, []);
 
@@ -243,29 +254,31 @@ export default function LoginPage() {
 
                       </div>
 
-          {/* Android APK Download Card / Banner */}
-          <div className="bg-white/90 backdrop-blur-xs border border-emerald-200/90 rounded-2xl p-3.5 shadow-xs flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                <Smartphone className="w-5 h-5" />
+          {/* Android APK Download Card / Banner - Only visible in Web App */}
+          {!isApk && (
+            <div className="bg-white/90 backdrop-blur-xs border border-emerald-200/90 rounded-2xl p-3.5 shadow-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div className="text-left leading-tight">
+                  <h4 className="text-xs font-bold text-slate-800">
+                    Android Field Sales App
+                  </h4>
+                  <p className="text-[10px] text-slate-500">
+                    Official Shreeji Healthcare APK (12 MB)
+                  </p>
+                </div>
               </div>
-              <div className="text-left leading-tight">
-                <h4 className="text-xs font-bold text-slate-800">
-                  Android Field Sales App
-                </h4>
-                <p className="text-[10px] text-slate-500">
-                  Official Shreeji Healthcare APK (12 MB)
-                </p>
-              </div>
+              <a
+                href="/shreeji-healthcare.apk"
+                download="shreeji-healthcare.apk"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition-colors shrink-0"
+              >
+                <span>Download APK</span>
+              </a>
             </div>
-            <a
-              href="/shreeji-healthcare.apk"
-              download="shreeji-healthcare.apk"
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition-colors shrink-0"
-            >
-              <span>Download APK</span>
-            </a>
-          </div>
+          )}
 
           {/* Security Assurance Footer */}
           <div className="text-center space-y-1">

@@ -18,12 +18,13 @@ export default function SalesmanProductsPage() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (queryOverride?: string) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (category !== 'All') params.set('category', category);
-      if (search) params.set('search', search);
+      const activeSearch = queryOverride !== undefined ? queryOverride : search;
+      if (activeSearch && activeSearch.trim()) params.set('search', activeSearch.trim());
       if (statusFilter === 'In Stock') params.set('status', 'in_stock');
       if (statusFilter === 'Out of Stock') params.set('status', 'out_of_stock');
       if (statusFilter === 'Near Expiry') params.set('status', 'near_expiry');
@@ -32,7 +33,7 @@ export default function SalesmanProductsPage() {
       const res = await fetch(`/api/stock?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.success) setProducts(json.data);
+        if (json.success) setProducts(json.data || []);
       }
     } catch (err) {
       console.error(err);
@@ -82,7 +83,7 @@ export default function SalesmanProductsPage() {
             value={search}
             onChange={(val) => {
               setSearch(val);
-              fetchProducts();
+              fetchProducts(val);
             }}
             placeholder="Search medicine name, company, or pack..."
           />
@@ -110,7 +111,12 @@ export default function SalesmanProductsPage() {
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <h4 className="font-bold text-slate-900 text-sm">{p.productName}</h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="font-bold text-slate-900 text-sm">{p.productName}</h4>
+                        <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                          GST {p.gstPercent ?? 12}%
+                        </span>
+                      </div>
                       {p.defaultScheme && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold shrink-0">
                           <Gift className="w-3 h-3 text-emerald-600" /> {p.defaultScheme}
@@ -122,14 +128,18 @@ export default function SalesmanProductsPage() {
                       {p.company} • Pack: <strong className="text-slate-700">{p.packing}</strong>
                     </p>
 
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-slate-50 rounded-lg text-center text-xs mb-3">
+                    <div className="grid grid-cols-3 gap-1.5 p-2 bg-slate-50 rounded-lg text-center text-xs mb-3">
                       <div>
                         <span className="text-[10px] text-slate-400 block font-bold uppercase">MRP</span>
                         <span className="text-slate-500 font-semibold">{formatCurrency(p.mrp)}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-emerald-700 block font-bold uppercase">PTR Rate</span>
+                        <span className="text-[10px] text-emerald-700 block font-bold uppercase">PTR</span>
                         <span className="font-bold text-slate-900">{formatCurrency(p.ptr)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-blue-700 block font-bold uppercase">GST</span>
+                        <span className="font-black text-blue-700">{p.gstPercent ?? 12}%</span>
                       </div>
                     </div>
                   </div>

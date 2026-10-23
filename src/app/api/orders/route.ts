@@ -66,8 +66,11 @@ export async function GET(req: NextRequest) {
         o.order_date as "orderDate",
         o.delivery_date as "deliveryDate",
         o.subtotal,
+        o.subtotal as "totalWithoutGst",
         o.discount_amount as "discountAmount",
+        COALESCE(o.gst_amount, 0.00) as "gstAmount",
         o.total_amount as "totalAmount",
+        o.total_amount as "totalWithGst",
         o.total_quantity as "totalQuantity",
         o.total_free_quantity as "totalFreeQuantity",
         o.remarks,
@@ -145,21 +148,23 @@ export async function POST(req: NextRequest) {
 
     const newOrder = await withTransaction(async (client) => {
       // 1. Insert order
+      // 1. Insert order with GST amounts
       const orderRes = await client.query(
         `INSERT INTO orders (
           order_number, party_id, salesman_id, status, order_date, delivery_date,
-          subtotal, discount_amount, total_amount, total_quantity, total_free_quantity, remarks
-        ) VALUES ($1, $2, $3, $4, now(), $5, $6, $7, $8, $9, $10, $11)
-        RETURNING id, order_number as "orderNumber", status, total_amount as "totalAmount", total_quantity as "totalQuantity", total_free_quantity as "totalFreeQuantity"`,
+          subtotal, discount_amount, gst_amount, total_amount, total_quantity, total_free_quantity, remarks
+        ) VALUES ($1, $2, $3, $4, now(), $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, order_number as "orderNumber", status, subtotal as "subtotal", gst_amount as "gstAmount", total_amount as "totalAmount", total_quantity as "totalQuantity", total_free_quantity as "totalFreeQuantity"`,
         [
           orderNumber,
           partyId,
           salesmanId,
           status,
           deliveryDate || null,
-          totals.subtotal,
+          totals.totalWithoutGst,
           totals.discountAmount,
-          totals.totalAmount,
+          totals.totalGst,
+          totals.totalWithGst,
           totals.totalQuantity,
           totals.totalFreeQuantity,
           remarks || null,
@@ -198,7 +203,7 @@ export async function POST(req: NextRequest) {
 
         // Check and decrement master product stock
         const prodRes = await client.query(
-          `SELECT id, product_name, stock_qty FROM products WHERE id = $1 FOR UPDATE`,
+          `SELECT id, product_name, stock_qty, gst_percent FROM products WHERE id = $1 FOR UPDATE`,
           [item.productId]
         );
         if (prodRes.rows.length === 0) {
@@ -219,11 +224,15 @@ export async function POST(req: NextRequest) {
         const mrp = Math.max(0, Number(item.mrp) || 0);
         const disc = Math.max(0, Number(item.discountAmount) || 0);
         const lineTotal = Math.max(0, qty * ptr - disc);
+        const itemGstRate = item.gstPercent !== undefined && item.gstPercent !== null 
+          ? Number(item.gstPercent) 
+          : Number(prodRes.rows[0].gst_percent || 12);
+        const itemGstAmt = Math.round(((lineTotal * itemGstRate) / 100) * 100) / 100;
 
         await client.query(
           `INSERT INTO order_items (
-            order_id, product_id, batch_id, quantity, free_quantity, ptr, mrp, scheme_name, discount_amount, line_total
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            order_id, product_id, batch_id, quantity, free_quantity, ptr, mrp, scheme_name, discount_amount, line_total, gst_percent, gst_amount
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             order.id,
             item.productId,
@@ -235,6 +244,8 @@ export async function POST(req: NextRequest) {
             item.schemeName || null,
             disc,
             lineTotal,
+            itemGstRate,
+            itemGstAmt,
           ]
         );
       }

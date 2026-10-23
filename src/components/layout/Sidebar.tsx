@@ -22,6 +22,8 @@ import {
   MapPin,
   KeyRound,
   User,
+  Smartphone,
+  Sliders,
 } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { cn } from '@/lib/utils';
@@ -43,6 +45,9 @@ export function Sidebar() {
     { label: 'Parties', href: '/owner/parties', icon: Users },
     { label: 'Nearest Parties', href: '/owner/parties/nearby', icon: MapPin },
     { label: 'Users & Roles', href: '/owner/users', icon: ShieldCheck },
+    ...(user.role === 'super_admin'
+      ? [{ label: 'Device Controls', href: '/owner/devices', icon: Smartphone, highlight: true }]
+      : []),
     { label: 'Salesmen', href: '/owner/salesmen', icon: UserCheck },
     { label: 'Outstanding Aging', href: '/owner/outstanding', icon: Clock },
     { label: 'Schemes', href: '/owner/schemes', icon: BadgePercent },

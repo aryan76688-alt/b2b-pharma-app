@@ -42,6 +42,8 @@ export interface Party {
   mobile: string;
   email?: string;
   gstNumber?: string;
+  panNumber?: string;
+  drugLicenses?: string[];
   address: string;
   state: string;
   city: string;
@@ -139,7 +141,9 @@ export interface OrderItem {
   mrp: number;
   schemeName?: string;
   discountAmount: number;
-  lineTotal: number;       // (quantity * ptr) - discountAmount
+  lineTotal: number;       // (quantity * ptr) - discountAmount (without GST)
+  gstPercent?: number;     // e.g. 12, 18, 5
+  gstAmount?: number;      // lineTotal * (gstPercent / 100)
 }
 
 export interface OrderStatusHistoryItem {
@@ -167,7 +171,10 @@ export interface Order {
   deliveryDate?: string;
   subtotal: number;
   discountAmount: number;
-  totalAmount: number;
+  gstAmount?: number;
+  totalAmount: number;     // Total With GST
+  totalWithoutGst?: number;
+  totalWithGst?: number;
   totalQuantity: number;
   totalFreeQuantity: number;
   remarks?: string;

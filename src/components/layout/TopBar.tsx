@@ -20,13 +20,13 @@ export function TopBar({ title, showBack = false, actions }: TopBarProps) {
 
   if (!user) return null;
 
-  const isOwner = user.role === 'owner';
+  const isOwner = user.role === 'owner' || user.role === 'super_admin';
   const notifHref = isOwner ? '/owner/notifications' : '/salesman/notifications';
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6">
-      <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto">
-        <div className="flex items-center gap-3 min-w-0">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 py-2.5 sm:px-6 sm:py-3 max-w-full overflow-hidden">
+      <div className="flex items-center justify-between gap-2 sm:gap-4 max-w-7xl mx-auto w-full">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           {showBack && (
             <button
               onClick={() => router.back()}
@@ -39,11 +39,11 @@ export function TopBar({ title, showBack = false, actions }: TopBarProps) {
 
           {/* On mobile, show logo if no title, else show page title */}
           {title ? (
-            <h1 className="text-base sm:text-xl font-bold text-slate-900 truncate">
+            <h1 className="text-sm sm:text-xl font-bold text-slate-900 truncate">
               {title}
             </h1>
           ) : (
-            <div className="relative w-36 h-9 sm:w-44 sm:h-11">
+            <div className="relative w-32 h-8 sm:w-44 sm:h-11">
               <Image
                 src="/logo.png"
                 alt="Shreeji Healthcare"
@@ -56,7 +56,7 @@ export function TopBar({ title, showBack = false, actions }: TopBarProps) {
         </div>
 
         {/* Right Actions & Notification Bell */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {actions}
 
           <Link

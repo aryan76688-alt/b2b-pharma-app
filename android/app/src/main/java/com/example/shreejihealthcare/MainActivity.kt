@@ -7,8 +7,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -16,6 +18,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -39,6 +42,45 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
+
+class WebAppInterface(private val mContext: Context) {
+    @JavascriptInterface
+    fun isAndroidApp(): Boolean = true
+
+    @JavascriptInterface
+    fun showToast(message: String) {
+        Toast.makeText(mContext, message, Toast.LENGTH_SHORT).show()
+    }
+
+    @JavascriptInterface
+    fun triggerEmergencyCall(phoneNumber: String) {
+        try {
+            val cleanNumber = phoneNumber.replace(Regex("[^0-9+]"), "")
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    mContext,
+                    android.Manifest.permission.CALL_PHONE
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$cleanNumber")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                mContext.startActivity(callIntent)
+            } else {
+                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$cleanNumber")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                mContext.startActivity(dialIntent)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(mContext, "Emergency call error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @JavascriptInterface
+    fun triggerEmergencySOS() {
+        triggerEmergencyCall("9924544283")
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -66,9 +108,23 @@ class MainActivity : ComponentActivity() {
         filePathCallback = null
     }
 
+    private fun startBackgroundService() {
+        try {
+            val serviceIntent = Intent(this, ShreejiBackgroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        startBackgroundService()
 
         // Auto request GPS location permissions for chemist geofencing and delivery tracking
         locationPermissionLauncher.launch(
@@ -184,6 +240,9 @@ fun ShreejiAppRoot(
                         setGeolocationEnabled(true)
                     }
 
+                    addJavascriptInterface(WebAppInterface(ctx), "AndroidBridge")
+                    addJavascriptInterface(WebAppInterface(ctx), "AndroidApp")
+
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             super.onPageStarted(view, url, favicon)
@@ -212,7 +271,9 @@ fun ShreejiAppRoot(
 
                         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                             val url = request?.url?.toString() ?: return false
-                            if (url.startsWith("tel:") || url.startsWith("mailto:") || url.startsWith("whatsapp:") || url.startsWith("https://wa.me/") || url.contains("api.whatsapp.com")) {
+                            if (url.startsWith("tel:") || url.startsWith("mailto:") || url.startsWith("whatsapp:") ||
+                                url.startsWith("upi:") || url.startsWith("phonepe:") || url.startsWith("tez:") || url.startsWith("paytmmp:") ||
+                                url.startsWith("https://wa.me/") || url.contains("api.whatsapp.com")) {
                                 return try {
                                     ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                     true

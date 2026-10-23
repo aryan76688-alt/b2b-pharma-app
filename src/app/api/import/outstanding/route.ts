@@ -46,71 +46,161 @@ export async function POST(req: NextRequest) {
       const row = rows[i];
       const rowNumber = i + 2;
 
-      const getVal = (field: string) => {
-        const colHeader = mapping[field] || field;
-        return row[colHeader] !== undefined ? row[colHeader] : (row[field] !== undefined ? row[field] : '');
+      const getVal = (field: string, aliases: string[] = []): string => {
+        if (mapping[field] && row[mapping[field]] !== undefined) return String(row[mapping[field]]).trim();
+        if (row[field] !== undefined && row[field] !== '') return String(row[field]).trim();
+        for (const a of aliases) {
+          const matched = Object.keys(row).find(k => {
+            const cleanK = k.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanA = a.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return cleanK === cleanA || cleanK.includes(cleanA) || cleanA.includes(cleanK);
+          });
+          if (matched && row[matched] !== undefined && row[matched] !== '') {
+            return String(row[matched]).trim();
+          }
+        }
+        return '';
       };
 
-      const partyIdentifier = String(getVal('partyCode')).trim();
-      const totalOutstanding = parseFloat(String(getVal('totalOutstanding')).replace(/[^0-9.-]+/g, '')) || 0;
-      const pendingDays = parseInt(String(getVal('pendingDays')).replace(/[^0-9]+/g, ''), 10) || 0;
-      const lastBillDate = String(getVal('lastBillDate')).trim();
-      const lastPaymentDate = String(getVal('lastPaymentDate')).trim();
-      const totalBills = parseInt(String(getVal('totalBills')), 10) || 1;
+      const partyName = getVal('partyName', ['name of the party', 'party name', 'party', 'chemist', 'customer', 'name']);
+      const partyCode = getVal('partyCode', ['code', 'party_code', 'customer_code', 'id']);
+      const partyIdentifier = partyName || partyCode;
+
+      const rawOutstanding = getVal('totalOutstanding', ['total outstanding', 'outstanding', 'balance', 'due_amount', 'amount']);
+      const totalOutstanding = parseFloat(rawOutstanding.replace(/,/g, '')) || 0;
+
+      const aging30 = parseFloat(getVal('aging30', ['last 30 days', '30 days']).replace(/,/g, '')) || 0;
+      const aging60 = parseFloat(getVal('aging60', ['last 60 days', '60 days']).replace(/,/g, '')) || 0;
+      const aging90 = parseFloat(getVal('aging90', ['last 90 days', '90 days']).replace(/,/g, '')) || 0;
+      const agingMore90 = parseFloat(getVal('agingMore90', ['more than 90 days', '>90 days']).replace(/,/g, '')) || 0;
+
+      const pendingDays = parseInt(getVal('pendingDays', ['days since last payment', 'pending_days', 'days', 'overdue_days', 'aging']).replace(/[^0-9]+/g, ''), 10) || 0;
+      const lastBillDate = getVal('lastSaleBillDate', ['last sale bill date', 'last bill date', 'bill date']);
+      const lastSaleAmount = parseFloat(getVal('lastSaleAmount', ['last sale amount', 'last bill amount', 'bill amount']).replace(/,/g, '')) || 0;
+      const lastPaymentDate = getVal('lastPaymentDate', ['last payment date', 'last payment received date', 'payment date', 'receipt date']);
+      const lastPaymentAmount = parseFloat(getVal('lastPaymentAmount', ['last payment amount', 'last received amount', 'payment amount']).replace(/,/g, '')) || 0;
+
+      const gstin = getVal('gstNumber', ['gstin', 'gst no.', 'gst no', 'gst', 'gst_number']);
+      const pan = getVal('panNumber', ['pan', 'pan no.', 'pan no', 'pan_number']);
+      const phone = getVal('phone', ['phone', 'telephone', 'landline']);
+      const mobile = getVal('mobile', ['mobile', 'contact', 'cell', 'phone no', 'mobile_no']) || phone;
+      const address = getVal('address', ['address of party', 'address', 'address line 1', 'location']);
+      const route = getVal('deliveryRoute', ['route', 'delivery route', 'delivery_route']);
+      const area = getVal('area', ['area', 'locality']);
+      const station = getVal('city', ['station', 'city', 'town']) || area;
 
       if (!partyIdentifier) {
         errors.push({
           rowNumber,
-          fieldName: 'Party Code/Name',
-          errorMessage: 'Missing party identifier',
+          fieldName: 'Party Name',
+          errorMessage: 'Missing party name or code',
           rawData: row,
         });
         continue;
       }
 
-      // Match party by code, name, or mobile
-      const partyRes = await query(
-        `SELECT id FROM parties WHERE LOWER(party_code) = LOWER($1) OR LOWER(party_name) = LOWER($1) OR mobile = $1`,
-        [partyIdentifier]
+      // Match party by name, code, or mobile
+      let partyRes = await query(
+        `SELECT id, party_code, party_name FROM parties 
+         WHERE LOWER(TRIM(party_name)) = LOWER(TRIM($1)) 
+            OR (party_code IS NOT NULL AND LOWER(TRIM(party_code)) = LOWER(TRIM($1)))
+            OR ($2 <> '' AND mobile = $2)
+         LIMIT 1`,
+        [partyIdentifier, mobile]
       );
 
-      if (partyRes.rows.length === 0) {
-        errors.push({
-          rowNumber,
-          fieldName: 'Party Not Found',
-          errorMessage: `No party found matching '${partyIdentifier}'`,
-          rawData: row,
-        });
-        skippedCount++;
-        continue;
-      }
+      let partyId: string;
 
-      const partyId = partyRes.rows[0].id;
+      if (partyRes.rows.length === 0) {
+        // Automatically create party so no Marg records are lost
+        const genCode = partyCode || `PRT-${Math.floor(1000 + Math.random() * 9000)}`;
+        const insParty = await query(
+          `INSERT INTO parties (
+            party_code, party_name, mobile, gst_number, pan_number, 
+            address, city, area, state, delivery_route, 
+            current_outstanding, opening_balance, status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Gujarat', $9, $10, $10, 'active')
+          RETURNING id`,
+          [
+            genCode,
+            partyName || partyIdentifier,
+            mobile || null,
+            gstin ? gstin.toUpperCase() : null,
+            pan ? pan.toUpperCase() : null,
+            address || 'Gujarat',
+            station || 'Gujarat',
+            area || station || 'Gujarat',
+            route || null,
+            totalOutstanding
+          ]
+        );
+        partyId = insParty.rows[0].id;
+      } else {
+        partyId = partyRes.rows[0].id;
+        // Update party with latest Marg information
+        await query(
+          `UPDATE parties 
+           SET current_outstanding = $1,
+               gst_number = COALESCE($2, gst_number),
+               pan_number = COALESCE($3, pan_number),
+               delivery_route = COALESCE($4, delivery_route),
+               address = CASE WHEN $5 <> '' THEN $5 ELSE address END,
+               city = CASE WHEN $6 <> '' THEN $6 ELSE city END,
+               area = CASE WHEN $7 <> '' THEN $7 ELSE area END,
+               mobile = COALESCE($8, mobile)
+           WHERE id = $9`,
+          [
+            totalOutstanding,
+            gstin ? gstin.toUpperCase() : null,
+            pan ? pan.toUpperCase() : null,
+            route || null,
+            address,
+            station,
+            area,
+            mobile || null,
+            partyId
+          ]
+        );
+      }
 
       try {
         let parsedBillDate: string | null = null;
         if (lastBillDate) {
-          const d = new Date(lastBillDate);
-          if (!isNaN(d.getTime())) parsedBillDate = d.toISOString().split('T')[0];
+          const parts = lastBillDate.split(/[-/]/);
+          if (parts.length === 3) {
+            // Check DD-MM-YYYY vs YYYY-MM-DD
+            if (parts[0].length === 2 && parts[2].length === 4) {
+              parsedBillDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            } else {
+              const d = new Date(lastBillDate);
+              if (!isNaN(d.getTime())) parsedBillDate = d.toISOString().split('T')[0];
+            }
+          }
         }
 
         let parsedPayDate: string | null = null;
         if (lastPaymentDate) {
-          const d = new Date(lastPaymentDate);
-          if (!isNaN(d.getTime())) parsedPayDate = d.toISOString().split('T')[0];
+          const parts = lastPaymentDate.split(/[-/]/);
+          if (parts.length === 3) {
+            if (parts[0].length === 2 && parts[2].length === 4) {
+              parsedPayDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            } else {
+              const d = new Date(lastPaymentDate);
+              if (!isNaN(d.getTime())) parsedPayDate = d.toISOString().split('T')[0];
+            }
+          }
         }
 
         await query(
           `INSERT INTO party_outstanding_snapshots (
             party_id, snapshot_date, total_outstanding, pending_days, last_bill_date, last_payment_date, total_bills
-          ) VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6)
+          ) VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, 1)
           ON CONFLICT (party_id, snapshot_date) DO UPDATE
           SET total_outstanding = EXCLUDED.total_outstanding,
               pending_days = EXCLUDED.pending_days,
               last_bill_date = EXCLUDED.last_bill_date,
-              last_payment_date = EXCLUDED.last_payment_date,
-              total_bills = EXCLUDED.total_bills`,
-          [partyId, totalOutstanding, pendingDays, parsedBillDate, parsedPayDate, totalBills]
+              last_payment_date = EXCLUDED.last_payment_date`,
+          [partyId, totalOutstanding, pendingDays, parsedBillDate, parsedPayDate]
         );
 
         updatedCount++;

@@ -19,14 +19,17 @@ export async function GET(req: NextRequest) {
       conditions.push(`p.category = $${params.length}`);
     }
 
-    if (search) {
+    const limit = Math.min(parseInt(searchParams.get('limit') || '500', 10), 1000);
+
+    if (search && search.trim()) {
       params.push(`%${search.trim().toLowerCase()}%`);
       const pIdx = params.length;
       conditions.push(`(
         LOWER(p.product_name) LIKE $${pIdx} OR 
         LOWER(p.product_code) LIKE $${pIdx} OR 
-        LOWER(p.generic_name) LIKE $${pIdx} OR 
-        LOWER(p.company) LIKE $${pIdx}
+        LOWER(COALESCE(p.generic_name, '')) LIKE $${pIdx} OR 
+        LOWER(p.company) LIKE $${pIdx} OR
+        EXISTS (SELECT 1 FROM product_batches pb WHERE pb.product_id = p.id AND LOWER(pb.batch_no) LIKE $${pIdx})
       )`);
     }
 
@@ -66,8 +69,8 @@ export async function GET(req: NextRequest) {
       FROM products p
       ${whereClause}
       ORDER BY p.product_name ASC
-      LIMIT 100`,
-      params
+      LIMIT $${params.length + 1}`,
+      [...params, limit]
     );
 
     const products = productsRes.rows;

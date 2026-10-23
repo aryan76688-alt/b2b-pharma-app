@@ -16,6 +16,10 @@ interface OrderCardProps {
 export function OrderCard({ order, isOwner = false, onApprove, onReject }: OrderCardProps) {
   const detailHref = isOwner ? `/owner/orders/${order.id}` : `/salesman/orders/${order.id}`;
 
+  const totalWithGst = Number(order.totalWithGst || order.totalAmount || 0);
+  const subtotalWithoutGst = Number(order.totalWithoutGst || order.subtotal || (totalWithGst - (Number(order.gstAmount) || 0)));
+  const gstVal = Number(order.gstAmount || Math.max(0, totalWithGst - subtotalWithoutGst));
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 transition-all shadow-soft flex flex-col justify-between">
       <div>
@@ -39,10 +43,21 @@ export function OrderCard({ order, isOwner = false, onApprove, onReject }: Order
           </div>
 
           <div className="text-right">
-            <span className="text-base sm:text-lg font-bold text-slate-900 block">
-              {formatCurrency(order.totalAmount)}
-            </span>
-            <span className="text-[11px] text-slate-400 flex items-center justify-end gap-1 mt-0.5">
+            <div className="flex flex-col items-end">
+              <span className="text-base sm:text-lg font-black text-slate-900 block leading-tight">
+                {formatCurrency(totalWithGst)}
+              </span>
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 mt-0.5">
+                Total (With GST)
+              </span>
+              <div className="text-[11px] text-slate-500 font-medium mt-1">
+                Subtotal: <span className="font-semibold text-slate-700">{formatCurrency(subtotalWithoutGst)}</span>
+                {gstVal > 0 && (
+                  <span className="text-slate-400 block text-[10px]">+ GST {formatCurrency(gstVal)}</span>
+                )}
+              </div>
+            </div>
+            <span className="text-[11px] text-slate-400 flex items-center justify-end gap-1 mt-1.5">
               <Calendar className="w-3 h-3" />
               {formatDate(order.orderDate)}
             </span>

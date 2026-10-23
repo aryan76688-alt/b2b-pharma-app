@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { SearchBar } from '@/components/shared/SearchBar';
+import { VoiceSearchInput } from '@/components/shared/VoiceSearchInput';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Dialog } from '@/components/ui/dialog';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -21,6 +22,7 @@ import {
   FileSpreadsheet,
   AlertCircle,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import { Party } from '@/types';
 
@@ -47,8 +49,28 @@ export default function OwnerPartiesPage() {
     openingBalance: 0,
     assignedSalesmanId: '',
   });
+  const [drugLicenses, setDrugLicenses] = useState<string[]>(['']);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleAddLicense = () => {
+    setDrugLicenses((prev) => [...prev, '']);
+  };
+
+  const handleLicenseChange = (index: number, val: string) => {
+    setDrugLicenses((prev) => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+
+  const handleRemoveLicense = (index: number) => {
+    setDrugLicenses((prev) => {
+      if (prev.length <= 1) return [''];
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   const fetchParties = async () => {
     setIsLoading(true);
@@ -100,10 +122,14 @@ export default function OwnerPartiesPage() {
     setErrorMsg(null);
 
     try {
+      const cleanLicenses = drugLicenses.map((l) => l.trim()).filter(Boolean);
       const res = await fetch('/api/parties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          drugLicenses: cleanLicenses,
+        }),
       });
 
       const json = await res.json();
@@ -126,6 +152,7 @@ export default function OwnerPartiesPage() {
         openingBalance: 0,
         assignedSalesmanId: '',
       });
+      setDrugLicenses(['']);
       fetchParties();
     } catch (err: any) {
       setErrorMsg(err.message || 'Error registering party.');
@@ -148,29 +175,33 @@ export default function OwnerPartiesPage() {
     <AppShell
       title="Chemist & Party Master"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Link href="/owner/parties/nearby">
-            <Button size="sm" variant="outline" className="text-xs bg-emerald-50 border-emerald-300 text-emerald-700 font-bold hover:bg-emerald-100">
-              <Compass className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Nearest Parties
+            <Button size="sm" variant="outline" className="text-xs bg-emerald-50 border-emerald-300 text-emerald-700 font-bold hover:bg-emerald-100 px-2 sm:px-3">
+              <Compass className="w-3.5 h-3.5 sm:mr-1 text-emerald-600" />
+              <span className="hidden sm:inline">Nearest Parties</span>
             </Button>
           </Link>
           <Link href="/owner/parties/map">
-            <Button size="sm" variant="outline" className="text-xs bg-blue-50 border-blue-300 text-shreeji-blue font-bold hover:bg-blue-100">
-              <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Parties Map
+            <Button size="sm" variant="outline" className="text-xs bg-blue-50 border-blue-300 text-shreeji-blue font-bold hover:bg-blue-100 px-2 sm:px-3">
+              <MapPin className="w-3.5 h-3.5 sm:mr-1 text-blue-600" />
+              <span className="hidden sm:inline">Parties Map</span>
             </Button>
           </Link>
           <Link href="/owner/import/parties">
-            <Button size="sm" variant="outline" className="text-xs text-shreeji-blue border-blue-200">
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Import Party
+            <Button size="sm" variant="outline" className="text-xs text-shreeji-blue border-blue-200 px-2 sm:px-3">
+              <FileSpreadsheet className="w-3.5 h-3.5 sm:mr-1 text-emerald-600" />
+              <span className="hidden sm:inline">Import Party</span>
             </Button>
           </Link>
           <Button
             size="sm"
             variant="primary"
             onClick={() => setIsCreateOpen(true)}
-            className="text-xs font-semibold"
+            className="text-xs font-semibold px-2 sm:px-3"
           >
-            <Plus className="w-4 h-4 mr-1" /> Add Party
+            <Plus className="w-4 h-4 sm:mr-1" />
+            <span className="hidden sm:inline">Add Party</span>
           </Button>
         </div>
       }
@@ -179,7 +210,7 @@ export default function OwnerPartiesPage() {
         {/* Filters */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
-            <SearchBar
+            <VoiceSearchInput
               value={search}
               onChange={(val) => {
                 setSearch(val);
@@ -256,6 +287,15 @@ export default function OwnerPartiesPage() {
                           Salesman: <strong className="text-slate-800">{p.assignedSalesmanName || 'Unassigned'}</strong>
                         </span>
                       </p>
+                      {p.drugLicenses && Array.isArray(p.drugLicenses) && p.drugLicenses.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {p.drugLicenses.map((lic: string, idx: number) => (
+                            <span key={idx} className="px-1.5 py-0.5 rounded bg-emerald-50 text-[10px] font-mono text-emerald-800 border border-emerald-200">
+                              DL: {lic}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Outstanding & Credit Limit */}
@@ -442,6 +482,45 @@ export default function OwnerPartiesPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Dynamic Drug Licenses (Optional) */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700">
+                Drug Licenses <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleAddLicense}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-shreeji-blue hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Add License
+              </button>
+            </div>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {drugLicenses.map((lic, idx) => (
+                <div key={idx} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={lic}
+                    onChange={(e) => handleLicenseChange(idx, e.target.value.toUpperCase())}
+                    placeholder={`e.g. 20B/GJ-AH-12345 (License ${idx + 1})`}
+                    className="flex-1 h-8 rounded-lg border border-slate-300 px-3 text-xs font-mono uppercase"
+                  />
+                  {(drugLicenses.length > 1 || lic.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLicense(idx)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      title="Remove License"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3">

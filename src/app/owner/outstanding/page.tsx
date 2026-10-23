@@ -17,12 +17,17 @@ import {
   FileText,
   Filter,
   RefreshCw,
+  QrCode,
 } from 'lucide-react';
+import { VoiceSearchInput } from '@/components/shared/VoiceSearchInput';
+import { UpiQrModal } from '@/components/payments/UpiQrModal';
+import { UpiPaymentDetails, getWhatsAppReminderUrl } from '@/lib/whatsappReminder';
 import { PartyOutstanding } from '@/types';
 
 export default function OutstandingDashboardPage() {
   const [parties, setParties] = useState<PartyOutstanding[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const [selectedUpiDetails, setSelectedUpiDetails] = useState<UpiPaymentDetails | null>(null);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -142,7 +147,7 @@ export default function OutstandingDashboardPage() {
         {/* Filters and Search */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="max-w-md w-full">
-            <SearchBar
+            <VoiceSearchInput
               value={search}
               onChange={(val) => {
                 setSearch(val);
@@ -197,6 +202,7 @@ export default function OutstandingDashboardPage() {
                       <th className="p-3">Last Bill</th>
                       <th className="p-3">Last Payment</th>
                       <th className="p-3 text-center">Status</th>
+                      <th className="p-3 text-center">Remind & Pay</th>
                       <th className="p-3 text-right">Ledger</th>
                     </tr>
                   </thead>
@@ -208,6 +214,14 @@ export default function OutstandingDashboardPage() {
                           : p.status === 'Due Soon'
                           ? 'bg-amber-50 text-amber-700 border-amber-200'
                           : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+                      const upiDetails: UpiPaymentDetails = {
+                        partyCode: p.partyCode,
+                        partyName: p.partyName,
+                        amount: Number(p.totalOutstanding) || 0,
+                        mobile: p.mobile,
+                        pendingDays: p.pendingDays,
+                      };
 
                       return (
                         <tr key={p.partyId} className="hover:bg-slate-50/80 transition-colors">
@@ -235,6 +249,29 @@ export default function OutstandingDashboardPage() {
                               {p.status}
                             </span>
                           </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <a
+                                href={getWhatsAppReminderUrl(upiDetails)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors"
+                                title="Send WhatsApp Reminder with UPI Link"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="hidden xl:inline">WhatsApp</span>
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUpiDetails(upiDetails)}
+                                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-shreeji-blue border border-blue-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                                title="Show Instant UPI QR Code"
+                              >
+                                <QrCode className="w-3.5 h-3.5 text-shreeji-blue" />
+                                <span className="hidden xl:inline">QR</span>
+                              </button>
+                            </div>
+                          </td>
                           <td className="p-3 text-right">
                             <Link
                               href={`/owner/parties/${p.partyId}`}
@@ -253,6 +290,12 @@ export default function OutstandingDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <UpiQrModal
+        isOpen={!!selectedUpiDetails}
+        onClose={() => setSelectedUpiDetails(null)}
+        details={selectedUpiDetails}
+      />
     </AppShell>
   );
 }

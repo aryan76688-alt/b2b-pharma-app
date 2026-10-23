@@ -28,7 +28,8 @@ export async function GET(
           'Sales Price': 5.10,
           'Company': 'PLENTIOS',
           'Batch': '',
-          'EXP': '- -'
+          'EXP': '- -',
+          'Rack No.': 'A-01'
         },
         {
           'Code': 'A001384',
@@ -40,7 +41,8 @@ export async function GET(
           'Sales Price': 24.00,
           'Company': 'ONEDRIP',
           'Batch': 'S04250004',
-          'EXP': '01-Sep-28'
+          'EXP': '01-Sep-28',
+          'Rack No.': 'B-12'
         },
         {
           'Code': 'A001384',
@@ -52,19 +54,21 @@ export async function GET(
           'Sales Price': 26.50,
           'Company': 'ONEDRIP',
           'Batch': 'S04260002',
-          'EXP': '01-Jun-29'
+          'EXP': '01-Jun-29',
+          'Rack No.': 'B-12'
         },
         {
           'Code': '03130',
           'Product Name': '10ML SYRINGE ATPL*50 1PCS',
-          'Unit': '',
+          'Unit': 'PCS',
           'Current Stock': 933,
           'M.R.P.': 51.00,
           'Purchase Price': 3.00,
           'Sales Price': 3.90,
           'Company': 'ALPHA',
           'Batch': '2607436',
-          'EXP': '01-Jun-31'
+          'EXP': '01-Jun-31',
+          'Rack No.': 'S-04'
         },
         {
           'Code': '2503',
@@ -76,7 +80,8 @@ export async function GET(
           'Sales Price': 4.20,
           'Company': 'LEEFORD WELLNESS',
           'Batch': 'Q1101026F00',
-          'EXP': '01-May-31'
+          'EXP': '01-May-31',
+          'Rack No.': 'L-08'
         },
         {
           'Code': '2503',
@@ -88,7 +93,8 @@ export async function GET(
           'Sales Price': 4.20,
           'Company': 'LEEFORD WELLNESS',
           'Batch': '2615810NB205',
-          'EXP': '01-May-31'
+          'EXP': '01-May-31',
+          'Rack No.': 'L-08'
         }
       ];
         } else if (type === 'parties') {

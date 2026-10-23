@@ -74,12 +74,13 @@ export default function UserManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (queryOverride?: string) => {
     setIsLoading(true);
     try {
       const url = new URL('/api/owner/users', window.location.origin);
       if (activeRole !== 'all') url.searchParams.set('role', activeRole);
-      if (search) url.searchParams.set('search', search);
+      const activeSearch = queryOverride !== undefined ? queryOverride : search;
+      if (activeSearch && activeSearch.trim()) url.searchParams.set('search', activeSearch.trim());
 
       const res = await fetch(url.toString());
       if (res.ok) {
@@ -88,6 +89,9 @@ export default function UserManagementPage() {
           setUsers(json.data.users || []);
           setRoleCounts(json.data.roleCounts || {});
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.error('Failed to load users:', errJson);
       }
     } catch (err) {
       console.error('Failed to load users:', err);
@@ -98,7 +102,7 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [activeRole, search]);
+  }, [activeRole]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,7 +280,7 @@ export default function UserManagementPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchUsers}
+              onClick={() => fetchUsers()}
               className="flex items-center gap-1.5 border-slate-300"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -351,7 +355,10 @@ export default function UserManagementPage() {
           <div className="w-full sm:w-72">
             <SearchBar
               value={search}
-              onChange={setSearch}
+              onChange={(val) => {
+                setSearch(val);
+                fetchUsers(val);
+              }}
               placeholder="Search by name, username, mobile..."
             />
           </div>

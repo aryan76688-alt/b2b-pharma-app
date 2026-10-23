@@ -31,18 +31,19 @@ export default function OwnerStockPage() {
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchStock = async () => {
+  const fetchStock = async (queryOverride?: string) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (category !== 'All') params.set('category', category);
-      if (search) params.set('search', search);
+      const activeSearch = queryOverride !== undefined ? queryOverride : search;
+      if (activeSearch && activeSearch.trim()) params.set('search', activeSearch.trim());
       if (statusFilter !== 'all') params.set('status', statusFilter);
 
       const res = await fetch(`/api/stock?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.success) setProducts(json.data);
+        if (json.success) setProducts(json.data || []);
       }
     } catch (err) {
       console.error(err);
@@ -123,7 +124,7 @@ export default function OwnerStockPage() {
               value={search}
               onChange={(val) => {
                 setSearch(val);
-                fetchStock();
+                fetchStock(val);
               }}
               placeholder="Search medicine name, company, pack, or batch..."
             />
@@ -198,9 +199,14 @@ export default function OwnerStockPage() {
                         <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                           {p.productCode}
                         </span>
-                        <h4 className="font-bold text-slate-900 text-sm mt-1 leading-snug line-clamp-2">
-                          {p.productName}
-                        </h4>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          <h4 className="font-bold text-slate-900 text-sm leading-snug line-clamp-2">
+                            {p.productName}
+                          </h4>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                            GST {p.gstPercent ?? 12}%
+                          </span>
+                        </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span
@@ -306,6 +312,7 @@ export default function OwnerStockPage() {
                       <th className="p-3">Batches</th>
                       <th className="p-3 text-right">MRP</th>
                       <th className="p-3 text-right">PTR Rate</th>
+                      <th className="p-3 text-center">GST Rate</th>
                       <th className="p-3 text-center">Available Stock</th>
                       <th className="p-3 text-center">Default Scheme</th>
                       <th className="p-3 text-center">Status</th>
@@ -362,6 +369,11 @@ export default function OwnerStockPage() {
                           <td className="p-3 text-right text-slate-500">{formatCurrency(p.mrp)}</td>
                           <td className="p-3 text-right font-bold text-slate-900">
                             {formatCurrency(p.ptr)}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                              {p.gstPercent ?? 12}%
+                            </span>
                           </td>
                           <td className="p-3 text-center">
                             <span

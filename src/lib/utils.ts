@@ -41,39 +41,52 @@ export function formatDateTime(dateStr: string | Date | null | undefined): strin
 }
 
 /**
- * Calculates order totals strictly adhering to the pharmaceutical distributor business rule:
- * - Line Total = (quantity * ptr) - discountAmount
+ * Calculates order totals strictly adhering to pharmaceutical distributor business rules:
+ * - Line Taxable Subtotal = (quantity * ptr) - discountAmount
  * - Free Quantity adds ₹0.00 to the bill total.
+ * - Line GST Amount = Line Taxable Subtotal * (gstPercent / 100)
+ * - Total Without GST = sum of taxable line subtotals
+ * - Total GST = sum of item GST amounts
+ * - Total With GST = Total Without GST + Total GST
  */
 export function calculateOrderTotals(items: OrderItem[]) {
   let subtotal = 0;
   let totalDiscount = 0;
   let totalQuantity = 0;
   let totalFreeQuantity = 0;
+  let totalGst = 0;
 
   for (const item of items) {
     const qty = Math.max(0, Number(item.quantity) || 0);
     const free = Math.max(0, Number(item.freeQuantity) || 0);
     const ptr = Math.max(0, Number(item.ptr) || 0);
     const discount = Math.max(0, Number(item.discountAmount) || 0);
+    const gstRate = item.gstPercent !== undefined && item.gstPercent !== null ? Number(item.gstPercent) : 12;
 
-    const lineTotal = Math.max(0, qty * ptr - discount);
+    const lineTaxable = Math.max(0, qty * ptr - discount);
+    const lineGst = (lineTaxable * gstRate) / 100;
 
     subtotal += qty * ptr;
     totalDiscount += discount;
+    totalGst += lineGst;
     totalQuantity += qty;
     totalFreeQuantity += free;
   }
 
-  const grandTotal = Math.max(0, subtotal - totalDiscount);
+  const totalWithoutGst = Math.max(0, subtotal - totalDiscount);
+  const totalWithGst = Math.round((totalWithoutGst + totalGst) * 100) / 100;
 
   return {
     totalItems: items.length,
     subtotal,
     discountAmount: totalDiscount,
-    totalAmount: grandTotal,
+    totalWithoutGst,
+    totalGst: Math.round(totalGst * 100) / 100,
+    totalWithGst,
+    totalAmount: totalWithGst,
     totalQuantity,
     totalFreeQuantity,
     totalPhysicalQuantity: totalQuantity + totalFreeQuantity,
   };
 }
+

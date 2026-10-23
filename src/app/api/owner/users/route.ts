@@ -56,8 +56,9 @@ export async function GET(req: NextRequest) {
       GROUP BY role
     `);
 
+    const totalCount = countRes.rows.reduce((sum, r) => sum + Number(r.count), 0);
     const roleCounts: Record<string, number> = {
-      total: result.rows.length,
+      total: totalCount,
       super_admin: 0,
       owner: 0,
       admin: 0,

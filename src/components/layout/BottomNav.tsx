@@ -24,6 +24,7 @@ import {
   KeyRound,
   User,
   Plus,
+  Smartphone,
 } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { Dialog } from '@/components/ui/dialog';
@@ -36,7 +37,7 @@ export function BottomNav() {
 
   if (!user) return null;
 
-  const isOwner = user.role === 'owner';
+  const isOwner = user.role === 'owner' || user.role === 'super_admin' || user.role === 'admin';
 
   const ownerPrimary = [
     { label: 'Home', href: '/owner/dashboard', icon: LayoutDashboard },
@@ -60,7 +61,11 @@ export function BottomNav() {
   }
 
   const ownerMore: NavItem[] = [
+    ...(user.role === 'super_admin'
+      ? [{ label: '📱 Device Controls', href: '/owner/devices', icon: Smartphone, highlight: true }]
+      : []),
     { label: '🧭 Nearest Parties (Live Radar)', href: '/owner/parties/nearby', icon: Compass, highlight: true },
+    { label: '👥 Users & Roles Management', href: '/owner/users', icon: ShieldCheck },
     { label: 'Manage Salesmen', href: '/owner/salesmen', icon: UserCheck },
     { label: 'Outstanding Aging', href: '/owner/outstanding', icon: Clock },
     { label: 'Promotional Schemes', href: '/owner/schemes', icon: BadgePercent },

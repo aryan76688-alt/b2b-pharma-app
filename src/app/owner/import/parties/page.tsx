@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle, RefreshCw, MapPin, ExternalLink } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-hot-toast';
 
@@ -13,6 +13,35 @@ export default function PartyImportPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
+
+  // Google Sheet Live Sync state
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [sheetSummary, setSheetSummary] = useState<any>(null);
+
+  const handleSyncGoogleSheet = async () => {
+    setIsSyncingSheet(true);
+    setSheetSummary(null);
+    try {
+      const res = await fetch('/api/owner/sync-google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sheetId: '1nZ_B6HBDjTDcLey5x1784b2o8r0nKweafWVUY8JW0wg'
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || 'Synced successfully from Google Sheet!');
+        setSheetSummary(json);
+      } else {
+        toast.error(json.error || 'Google Sheet sync failed');
+      }
+    } catch {
+      toast.error('Network error while syncing Google Sheet');
+    } finally {
+      setIsSyncingSheet(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -57,7 +86,9 @@ export default function PartyImportPage() {
             addressLine3: findVal(['address line 3', 'address 3', 'add 3']),
             city: findVal(['city', 'station']),
             state: findVal(['state']),
-            status: findVal(['status']) || 'Active'
+            status: findVal(['status']) || 'Active',
+            latitude: findVal(['latitude', 'lat', 'geolat']),
+            longitude: findVal(['longitude', 'lng', 'long', 'lon'])
           };
         }).filter(p => p.partyName || p.partyCode || p.mobile);
 
@@ -101,6 +132,70 @@ export default function PartyImportPage() {
   return (
     <AppShell title="Import MARG Parties" showBack>
       <div className="space-y-6 max-w-4xl mx-auto">
+        {/* 1. GOOGLE SHEET LIVE SYNC CARD */}
+        <Card className="p-6 border-slate-200 shadow-sm bg-gradient-to-br from-emerald-50/50 via-white to-blue-50/40 border-l-4 border-l-emerald-500">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">Google Sheets Live GPS & Routes Sync</h3>
+                  <p className="text-xs text-slate-500">
+                    Sync party routes, names, addresses, and GPS latitude/longitude directly from the live Google Sheet.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-600 font-mono">
+                <span className="font-semibold text-slate-700">Sheet ID:</span>
+                <span className="bg-white px-2 py-0.5 rounded border border-slate-200">1nZ_B6HBDjTDcLey5x1784b2o8r0nKweafWVUY8JW0wg</span>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1nZ_B6HBDjTDcLey5x1784b2o8r0nKweafWVUY8JW0wg/edit"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-shreeji-blue hover:text-blue-800 font-bold inline-flex items-center gap-0.5 ml-1"
+                >
+                  <ExternalLink className="w-3 h-3" /> Open Sheet
+                </a>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleSyncGoogleSheet}
+              disabled={isSyncingSheet}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 shadow-sm px-4 py-2"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+              {isSyncingSheet ? 'Syncing Coordinates...' : 'Sync GPS & Routes from Google Sheet'}
+            </Button>
+          </div>
+
+          {sheetSummary && (
+            <div className="mt-4 p-4 rounded-xl bg-white border border-emerald-200 shadow-sm animate-fade-in">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs mb-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                <span>{sheetSummary.message}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-500">Sheet Rows</div>
+                  <div className="text-lg font-black text-slate-900">{sheetSummary.totalRows}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-blue-50 border border-blue-200">
+                  <div className="text-[10px] uppercase font-bold text-blue-700">Parties Updated</div>
+                  <div className="text-lg font-black text-blue-800">{sheetSummary.updatedCount}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                  <div className="text-[10px] uppercase font-bold text-emerald-700">GPS Pinned</div>
+                  <div className="text-lg font-black text-emerald-700">{sheetSummary.coordsUpdatedCount}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* 2. EXCEL MANUAL UPLOAD CARD */}
         <Card className="p-6 border-slate-200 shadow-sm bg-white">
           <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
             <FileSpreadsheet className="w-12 h-12 text-blue-500 mb-3" />

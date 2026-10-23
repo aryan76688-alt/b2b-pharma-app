@@ -29,8 +29,11 @@ export async function GET(
         o.order_date as "orderDate",
         o.delivery_date as "deliveryDate",
         o.subtotal,
+        o.subtotal as "totalWithoutGst",
         o.discount_amount as "discountAmount",
+        COALESCE(o.gst_amount, 0.00) as "gstAmount",
         o.total_amount as "totalAmount",
+        o.total_amount as "totalWithGst",
         o.total_quantity as "totalQuantity",
         o.total_free_quantity as "totalFreeQuantity",
         o.remarks,
@@ -80,7 +83,9 @@ export async function GET(
         oi.mrp,
         oi.scheme_name as "schemeName",
         oi.discount_amount as "discountAmount",
-        oi.line_total as "lineTotal"
+        oi.line_total as "lineTotal",
+        COALESCE(oi.gst_percent, p.gst_percent, 12.00) as "gstPercent",
+        COALESCE(oi.gst_amount, ROUND((oi.line_total * COALESCE(oi.gst_percent, p.gst_percent, 12.00) / 100)::numeric, 2)) as "gstAmount"
       FROM order_items oi
       JOIN products p ON oi.product_id = p.id
       LEFT JOIN product_batches pb ON oi.batch_id = pb.id

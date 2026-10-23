@@ -142,3 +142,45 @@ export async function POST(req: NextRequest) {
     return handleAuthError(error);
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const owner = await requireOwner(req);
+    const body = await req.json();
+    const { salesmanId, targetAmount } = body;
+
+    if (!salesmanId || targetAmount === undefined || isNaN(Number(targetAmount))) {
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Salesman ID and valid target amount are required.' } },
+        { status: 400 }
+      );
+    }
+
+    const numericTarget = Math.max(0, Number(targetAmount));
+
+    await query(
+      `INSERT INTO salesman_profiles (user_id, target_amount)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE
+       SET target_amount = $2`,
+      [salesmanId, numericTarget]
+    );
+
+    await logAudit({
+      userId: owner.id,
+      action: 'UPDATE_SALESMAN_TARGET',
+      entityType: 'SALESMAN_PROFILE',
+      entityId: salesmanId,
+      newData: { targetAmount: numericTarget },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Monthly sales target updated successfully',
+      data: { salesmanId, targetAmount: numericTarget },
+    });
+  } catch (error) {
+    return handleAuthError(error);
+  }
+}
+

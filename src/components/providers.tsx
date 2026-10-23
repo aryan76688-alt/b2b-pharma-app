@@ -80,7 +80,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       // Role isolation
       if (user.role === 'salesman' && pathname.startsWith('/owner')) {
         router.push('/salesman/dashboard');
-      } else if (user.role === 'owner' && pathname.startsWith('/salesman')) {
+      } else if ((user.role === 'owner' || user.role === 'super_admin') && pathname.startsWith('/salesman')) {
         router.push('/owner/dashboard');
       }
     }
@@ -88,7 +88,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const login = (token: string, userData: User) => {
     setUser(userData);
-    if (userData.role === 'owner') {
+    if (userData.role === 'owner' || userData.role === 'super_admin') {
       router.push('/owner/dashboard');
     } else {
       router.push('/salesman/dashboard');

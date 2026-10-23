@@ -3,14 +3,20 @@ import React, { useState, useEffect } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Banknote, FileCheck, Search, Users, MapPin, ReceiptText } from 'lucide-react';
+import { Banknote, FileCheck, Search, Users, MapPin, ReceiptText, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { PaymentDetailsCard } from '@/components/payments/PaymentDetailsCard';
+import { UpiQrModal } from '@/components/payments/UpiQrModal';
+import { VoiceSearchInput } from '@/components/shared/VoiceSearchInput';
+import { UpiPaymentDetails } from '@/lib/whatsappReminder';
 
 export default function SalesmanCollectionsPage() {
   const [collections, setCollections] = useState<any[]>([]);
   const [parties, setParties] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [selectedUpiDetails, setSelectedUpiDetails] = useState<UpiPaymentDetails | null>(null);
   
   // Form state
   const [isAdding, setIsAdding] = useState(false);
@@ -95,15 +101,30 @@ export default function SalesmanCollectionsPage() {
         
         {!isAdding ? (
           <>
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex-wrap gap-2">
               <div>
                 <h2 className="font-bold text-slate-800">Payment Collection</h2>
                 <p className="text-xs text-slate-500">Record cash/cheques collected from chemists</p>
               </div>
-              <Button onClick={() => setIsAdding(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md text-xs px-4">
-                + New Receipt
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+                  className="border-purple-200 text-purple-700 hover:bg-purple-50 rounded-xl text-xs px-3 font-bold"
+                >
+                  <QrCode className="w-3.5 h-3.5 mr-1" /> {showPaymentDetails ? 'Hide Payment QR' : 'Payment QR & Bank'}
+                </Button>
+                <Button onClick={() => setIsAdding(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md text-xs px-4 font-bold">
+                  + New Receipt
+                </Button>
+              </div>
             </div>
+
+            {showPaymentDetails && (
+              <div className="p-4 bg-white rounded-2xl border border-purple-200 shadow-sm animate-fade-in">
+                <PaymentDetailsCard />
+              </div>
+            )}
 
             <div className="space-y-4">
               {collections.length === 0 ? (
@@ -158,16 +179,11 @@ export default function SalesmanCollectionsPage() {
                   <label className="text-xs font-semibold text-slate-700 mb-1.5 block">Select Party (Chemist)</label>
                   {!selectedParty ? (
                     <div className="space-y-2">
-                      <div className="relative">
-                        <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search party by name..."
-                          value={partySearch}
-                          onChange={(e) => setPartySearch(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
+                      <VoiceSearchInput
+                        placeholder="Search party by name..."
+                        value={partySearch}
+                        onChange={(val) => setPartySearch(val)}
+                      />
                       <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-xl bg-slate-50">
                         {filteredParties.slice(0, 10).map((p) => (
                           <div
@@ -241,6 +257,29 @@ export default function SalesmanCollectionsPage() {
                   </div>
                 )}
 
+                {/* UPI QR Instant Scan */}
+                {paymentMode === 'UPI' && selectedParty && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-purple-900">Scan & Pay via QR</p>
+                      <p className="text-[11px] text-purple-700">Display dynamic UPI QR code for chemist</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setSelectedUpiDetails({
+                        partyCode: selectedParty.partyCode || selectedParty.id,
+                        partyName: selectedParty.partyName,
+                        amount: Number(amount) || 0,
+                        mobile: selectedParty.mobile,
+                      })}
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
+                    >
+                      <QrCode className="w-3.5 h-3.5 mr-1" /> Show QR
+                    </Button>
+                  </div>
+                )}
+
                 {/* Notes */}
                 <div>
                   <label className="text-xs font-semibold text-slate-700 mb-1.5 block">Remarks (Optional)</label>
@@ -267,6 +306,12 @@ export default function SalesmanCollectionsPage() {
           </form>
         )}
       </div>
+
+      <UpiQrModal
+        isOpen={!!selectedUpiDetails}
+        onClose={() => setSelectedUpiDetails(null)}
+        details={selectedUpiDetails}
+      />
     </AppShell>
   );
 }

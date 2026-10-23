@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { SearchBar } from '@/components/shared/SearchBar';
+import { VoiceSearchInput } from '@/components/shared/VoiceSearchInput';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -85,20 +86,23 @@ export default function SalesmanPartiesPage() {
     <AppShell
       title="My Assigned Chemists"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Link href="/salesman/parties/nearby">
-            <Button size="sm" variant="outline" className="text-xs font-bold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100">
-              <Compass className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Nearest Chemists
+            <Button size="sm" variant="outline" className="text-xs font-bold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 px-2 sm:px-3">
+              <Compass className="w-3.5 h-3.5 sm:mr-1 text-emerald-600" />
+              <span className="hidden sm:inline">Nearest Chemists</span>
             </Button>
           </Link>
           <Link href="/salesman/parties/map">
-            <Button size="sm" variant="outline" className="text-xs font-bold text-shreeji-blue bg-blue-50 border-blue-200 hover:bg-blue-100">
-              <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" /> Route Map
+            <Button size="sm" variant="outline" className="text-xs font-bold text-shreeji-blue bg-blue-50 border-blue-200 hover:bg-blue-100 px-2 sm:px-3">
+              <MapPin className="w-3.5 h-3.5 sm:mr-1 text-blue-600" />
+              <span className="hidden sm:inline">Route Map</span>
             </Button>
           </Link>
           <Link href="/salesman/parties/create">
-            <Button size="sm" variant="green" className="text-xs font-bold">
-              <Plus className="w-4 h-4 mr-1" /> Add Party
+            <Button size="sm" variant="green" className="text-xs font-bold px-2 sm:px-3">
+              <Plus className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Add Party</span>
             </Button>
           </Link>
         </div>
@@ -106,7 +110,7 @@ export default function SalesmanPartiesPage() {
     >
       <div className="space-y-4 max-w-5xl mx-auto animate-fade-in">
         <div className="max-w-md">
-          <SearchBar
+          <VoiceSearchInput
             value={search}
             onChange={(val) => {
               setSearch(val);

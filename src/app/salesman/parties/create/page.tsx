@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Building2, ArrowLeft, CheckCircle2, MapPin, RefreshCw } from 'lucide-react';
+import { Building2, ArrowLeft, CheckCircle2, MapPin, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { savePartyOffline } from '@/lib/offline-queue';
 
 export default function SalesmanAddPartyPage() {
@@ -23,6 +23,7 @@ export default function SalesmanAddPartyPage() {
     creditLimit: 50000,
     openingBalance: 0,
   });
+  const [drugLicenses, setDrugLicenses] = useState<string[]>(['']);
   const [coords, setCoords] = useState<{ latitude: number | null; longitude: number | null }>({
     latitude: null,
     longitude: null,
@@ -31,6 +32,25 @@ export default function SalesmanAddPartyPage() {
   const [gpsNotice, setGpsNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleAddLicense = () => {
+    setDrugLicenses((prev) => [...prev, '']);
+  };
+
+  const handleLicenseChange = (index: number, val: string) => {
+    setDrugLicenses((prev) => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+
+  const handleRemoveLicense = (index: number) => {
+    setDrugLicenses((prev) => {
+      if (prev.length <= 1) return [''];
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   const captureLocation = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
@@ -70,8 +90,10 @@ export default function SalesmanAddPartyPage() {
     setIsLoading(true);
     setErrorMsg(null);
 
+    const cleanLicenses = drugLicenses.map((l) => l.trim()).filter(Boolean);
     const payload = {
       ...formData,
+      drugLicenses: cleanLicenses,
       latitude: coords.latitude,
       longitude: coords.longitude,
     };
@@ -209,6 +231,45 @@ export default function SalesmanAddPartyPage() {
                     placeholder="Asarwa"
                     className="w-full h-10 rounded-xl border border-slate-300 px-3 text-xs"
                   />
+                </div>
+              </div>
+
+              {/* Dynamic Drug Licenses (Optional) */}
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-700 text-xs">
+                    Drug License Numbers <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddLicense}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-shreeji-blue hover:text-blue-800 bg-white px-2 py-0.5 rounded-md border border-blue-200 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-3 h-3" /> Add License
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {drugLicenses.map((lic, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={lic}
+                        onChange={(e) => handleLicenseChange(idx, e.target.value.toUpperCase())}
+                        placeholder={`e.g. 20B/GJ-AH-12345 (License ${idx + 1})`}
+                        className="flex-1 h-9 rounded-lg border border-slate-300 px-3 text-xs font-mono uppercase bg-white"
+                      />
+                      {(drugLicenses.length > 1 || lic.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLicense(idx)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Remove License"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
 
